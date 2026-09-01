@@ -1,0 +1,1 @@
+{"name": "family-notes-api", "version": "1.0.0", "description": "Backend API for Family-notes", "main": "index.js", "scripts": {"start": "node index.js", "dev": "node --watch index.js"}, "dependencies": {"express": "^4.18.2", "sqlite3": "^5.1.6"}}
