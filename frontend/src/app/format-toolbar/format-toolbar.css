@@ -1,0 +1,118 @@
+/* Barre d'outils de formatage — style de base (construite groupe par groupe). */
+/* Transparente : la surface (fond, flou, bordure) est fournie par le conteneur */
+/* parent (.editor-toolbar dans note-editor.css). */
+.format-toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.4rem 0.6rem;
+  background: transparent;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.format-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.toolbar-group:not(:last-child) {
+  padding-right: 0.75rem;
+  border-right: 1px solid #e2e2e6;
+}
+
+.format-toolbar button {
+  cursor: pointer;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 6px;
+}
+
+.toolbar-group:not(.colors) button {
+  min-width: 2rem;
+  height: 2rem;
+  font-size: 0.95rem;
+  color: #1c1c1e;
+}
+
+.toolbar-group:not(.colors) button:hover {
+  background: #ececf0;
+  border-color: #d0d0d5;
+}
+
+.colors {
+  gap: 0.3rem;
+}
+
+.color-swatch {
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50% !important;
+  border: 1px solid rgba(0, 0, 0, 0.15) !important;
+  padding: 0;
+}
+
+.color-swatch:hover {
+  outline: 2px solid rgba(0, 122, 255, 0.5);
+  outline-offset: 1px;
+}
+
+/* Popups média (image / vidéo) */
+.media-popup {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.4rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid #d0d0d5;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08);
+}
+
+.media-popup .popup-row {
+  display: flex;
+  gap: 0.4rem;
+  flex: 1 1 16rem;
+}
+
+.media-popup input[type='text'] {
+  flex: 1;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid #c8c8cc;
+  border-radius: 6px;
+}
+
+.media-popup .popup-file {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+  color: #48484a;
+}
+
+.media-popup .btn-image-link,
+.media-popup .btn-video-link {
+  padding: 0.35rem 0.7rem;
+  border: 1px solid #007aff;
+  border-radius: 6px;
+  background: #007aff;
+  color: #fff;
+  cursor: pointer;
+}
+
+.media-popup .btn-close-popup {
+  margin-left: auto;
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  font-size: 1rem;
+  color: #8e8e93;
+}
