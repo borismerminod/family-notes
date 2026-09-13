@@ -1,0 +1,198 @@
+<!--
+  Éditeur de texte riche : barre d'outils + zone contenteditable (même composant, D2).
+  Construit en TDD groupe par groupe. Réalisé : G1 (rendu).
+  Chaque bouton annule le mousedown (D4) pour ne pas voler le focus du contenteditable.
+-->
+<div class="rich-text-editor">
+  <div class="format-toolbar" role="toolbar" aria-label="Mise en forme">
+    <!-- Marques sémantiques -->
+    <div class="toolbar-group">
+      <button
+        type="button"
+        class="btn-bold"
+        [class.active]="active().bold"
+        (mousedown)="$event.preventDefault()"
+        (click)="applyMark('bold')"
+        title="Gras"
+        aria-label="Gras"
+      >
+        <strong>G</strong>
+      </button>
+      <button
+        type="button"
+        class="btn-italic"
+        [class.active]="active().italic"
+        (mousedown)="$event.preventDefault()"
+        (click)="applyMark('italic')"
+        title="Italique"
+        aria-label="Italique"
+      >
+        <em>I</em>
+      </button>
+      <button
+        type="button"
+        class="btn-underline"
+        [class.active]="active().underline"
+        (mousedown)="$event.preventDefault()"
+        (click)="applyMark('underline')"
+        title="Souligné"
+        aria-label="Souligné"
+      >
+        <u>S</u>
+      </button>
+    </div>
+
+    <!-- Taille -->
+    <div class="toolbar-group">
+      @for (s of sizes; track s.size) {
+        <button
+          type="button"
+          [class]="'btn-size-' + s.size"
+          [class.active]="active().size === s.size"
+          (mousedown)="$event.preventDefault()"
+          (click)="applySize(s.size)"
+          [title]="s.title"
+          [attr.aria-label]="s.title"
+        >
+          {{ s.label }}
+        </button>
+      }
+    </div>
+
+    <!-- Listes -->
+    <div class="toolbar-group">
+      <button
+        type="button"
+        class="btn-list-bullet"
+        [class.active]="active().bullet"
+        (mousedown)="$event.preventDefault()"
+        (click)="applyList('bullet')"
+        title="Liste à puces"
+        aria-label="Liste à puces"
+      >
+        • Liste
+      </button>
+      <button
+        type="button"
+        class="btn-list-numbered"
+        [class.active]="active().numbered"
+        (mousedown)="$event.preventDefault()"
+        (click)="applyList('numbered')"
+        title="Liste numérotée"
+        aria-label="Liste numérotée"
+      >
+        1. Liste
+      </button>
+    </div>
+
+    <!-- Couleur -->
+    <div class="toolbar-group colors">
+      @for (color of palette; track color) {
+        <button
+          type="button"
+          class="color-swatch"
+          [class.active]="active().color === color"
+          [attr.data-color]="color"
+          [title]="color"
+          [style.background-color]="color"
+          (mousedown)="$event.preventDefault()"
+          (click)="applyColor(color)"
+          aria-label="Couleur du texte"
+        ></button>
+      }
+    </div>
+
+    <!-- Médias -->
+    <div class="toolbar-group">
+      <button
+        type="button"
+        class="btn-image"
+        (mousedown)="$event.preventDefault()"
+        (click)="openImagePopup()"
+        title="Insérer une image"
+        aria-label="Insérer une image"
+      >
+        🖼
+      </button>
+      <button
+        type="button"
+        class="btn-video"
+        (mousedown)="$event.preventDefault()"
+        (click)="openVideoPopup()"
+        title="Insérer une vidéo"
+        aria-label="Insérer une vidéo"
+      >
+        🎬
+      </button>
+    </div>
+  </div>
+
+  <!-- Popup d'insertion d'image (rendu conditionnel) -->
+  @if (imagePopupOpen()) {
+    <div class="media-popup image-popup" role="dialog" aria-label="Insérer une image">
+      <div class="popup-row">
+        <input
+          type="text"
+          class="image-url-input"
+          placeholder="Lien de l'image (https://…)"
+          [value]="imageUrl()"
+          (input)="imageUrl.set($any($event.target).value)"
+        />
+        <button type="button" class="btn-image-link" (click)="insertImageFromUrl()">
+          Insérer le lien
+        </button>
+      </div>
+      <label class="popup-file">
+        Depuis le PC
+        <input
+          type="file"
+          class="btn-image-file"
+          accept="image/*"
+          (change)="onImageFile($event)"
+        />
+      </label>
+      <button
+        type="button"
+        class="btn-close-popup"
+        (click)="closeImagePopup()"
+        aria-label="Fermer"
+      >
+        ✕
+      </button>
+    </div>
+  }
+
+  <!-- Popup d'insertion de vidéo (lien seul) -->
+  @if (videoPopupOpen()) {
+    <div class="media-popup video-popup" role="dialog" aria-label="Insérer une vidéo">
+      <div class="popup-row">
+        <input
+          type="text"
+          class="video-url-input"
+          placeholder="Lien de la vidéo (YouTube, Vimeo…)"
+          [value]="videoUrl()"
+          (input)="videoUrl.set($any($event.target).value)"
+        />
+        <button type="button" class="btn-video-link" (click)="insertVideoFromUrl()">
+          Insérer la vidéo
+        </button>
+      </div>
+      <button
+        type="button"
+        class="btn-close-popup"
+        (click)="closeVideoPopup()"
+        aria-label="Fermer"
+      >
+        ✕
+      </button>
+    </div>
+  }
+
+  <!-- Zone d'édition : le contenu entrant y est injecté par effet (D5), pas via [innerHTML]. -->
+  <div
+    #editor
+    class="editor-content"
+    contenteditable="true"
+    (input)="onInput()"
+  ></div>
+</div>

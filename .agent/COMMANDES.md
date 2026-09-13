@@ -77,6 +77,13 @@ docker run --rm -it -p 4200:4200 -v "$(pwd)/frontend:/app" -w /app node:lts npx 
 docker run --rm -v "$(pwd)/frontend:/app" -w /app node:lts npx ng build
 ```
 
+**Construire et lancer un conteneur pour le dev**
+```
+docker build --target development -t family-notes-web ./frontend
+
+docker run --rm -it -p 4200:4200 -v "$(pwd)/frontend:/app" -v /app/node_modules family-notes-web
+``̀
+
 **Lancer les tests**
 ```powershell
 docker run --rm -it -v "$(pwd)/frontend:/app" -w /app node:lts npx ng test

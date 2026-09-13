@@ -130,67 +130,11 @@
   font-weight: 400;
 }
 
-/* ---- Barre d'outils de formatage (collante) ---- */
-/* L'hôte <app-format-toolbar> porte la surface ; le composant reste transparent. */
-.editor-toolbar {
-  position: sticky;
-  top: 0;
-  z-index: 10;
+/* ---- Éditeur de texte riche (toolbar + zone d'édition, composant dédié) ---- */
+/* La barre d'outils collante est gérée dans le composant lui-même (encapsulation). */
+.editor-rich {
   display: block;
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: saturate(180%) blur(14px);
-  -webkit-backdrop-filter: saturate(180%) blur(14px);
-  border-bottom: 0.5px solid var(--separator);
-}
-
-/* ---- Contenu riche éditable ---- */
-.editor-content {
-  padding: 18px 20px calc(60px + var(--safe-bottom));
-  font-size: 16px;
-  line-height: 1.55;
-  color: var(--text);
-  min-height: 320px;
-  outline: none;
-}
-
-.editor-content:empty::before {
-  content: attr(data-placeholder);
-  color: var(--text-2);
-  pointer-events: none;
-}
-
-.editor-content h1 {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.3px;
-  margin: 0 0 10px;
-}
-
-.editor-content h2 {
-  font-size: 19px;
-  font-weight: 700;
-  margin: 22px 0 8px;
-}
-
-.editor-content p {
-  margin: 0 0 12px;
-}
-
-.editor-content ul,
-.editor-content ol {
-  margin: 0 0 14px;
-  padding-left: 24px;
-}
-
-.editor-content li {
-  margin-bottom: 5px;
-}
-
-.editor-content img {
-  display: block;
-  max-width: 100%;
-  border-radius: 12px;
-  margin: 6px 0 14px;
+  padding-bottom: calc(60px + var(--safe-bottom));
 }
 
 /* ---- Chargement ---- */

@@ -39,24 +39,12 @@
         </div>
       </div>
 
-      <!-- Barre d'outils de formatage (collante sous l'en-tête) -->
-      <app-format-toolbar
-        class="editor-toolbar"
-        [selectedText]="selectedText()"
-        (formatApplied)="onFormatApplied($event)"
-      ></app-format-toolbar>
-
-      <!-- Contenu riche éditable -->
-      <div
-        #editor
-        class="editor-content"
-        contenteditable="true"
-        data-placeholder="Écrivez votre note…"
-        [innerHTML]="renderHtml()"
-        (input)="onContentInput($event)"
-        (mouseup)="onSelectionChange()"
-        (keyup)="onSelectionChange()"
-      ></div>
+      <!-- Éditeur de texte riche : barre d'outils + zone d'édition (D2) -->
+      <app-rich-text-editor
+        class="editor-rich"
+        [content]="content()"
+        (contentChange)="content.set($event)"
+      ></app-rich-text-editor>
 
     </div>
   </div>

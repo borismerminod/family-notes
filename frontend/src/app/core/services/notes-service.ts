@@ -2,58 +2,16 @@ import { Injectable } from '@angular/core';
 import { Note } from '../models/note.model';
 import { CapacitorSQLite, SQLiteConnection, SQLiteDBConnection } from '@capacitor-community/sqlite';
 import { Capacitor } from '@capacitor/core';
+import { SqliteService } from './sqlite-service';
 
 @Injectable({
   providedIn: 'root',
 })
-export class NotesService {
-  private sqlite: SQLiteConnection = new SQLiteConnection(CapacitorSQLite);
-  private db!: SQLiteDBConnection;
-  private readonly DB_NAME = 'family_notes';
-  private readonly isWeb = Capacitor.getPlatform() === 'web';
+export class NotesService extends SqliteService {
 
-  // Promesse résolue une fois la base prête ; toute méthode publique l'attend
-  // pour éviter d'accéder à this.db avant la fin de l'initialisation.
-  private ready: Promise<void>;
-
-  constructor() {
-    this.ready = this.initializeDatabase();
-  }
-
-  private async initializeDatabase(): Promise<void> {
-    try {
-      // 1. Sur le web, SQLite s'appuie sur le composant <jeep-sqlite> (sql.js/WASM),
-      //    qui doit être présent dans le DOM et initialisé avant toute connexion.
-      
-      if (this.isWeb) {
-        await customElements.whenDefined('jeep-sqlite');
-        const jeepEl: any =
-          document.querySelector('jeep-sqlite') ?? document.createElement('jeep-sqlite');
-        if (!jeepEl.isConnected) {
-          document.body.appendChild(jeepEl);
-        }
-
-        // componentOnReady n'existe que sur un vrai composant Stencil hydraté
-        // (absent en test avec un élément factice) : on l'attend seulement si présent.
-        if (typeof jeepEl.componentOnReady === 'function') {
-          await jeepEl.componentOnReady();
-        }
-        await this.sqlite.initWebStore();
-      }
-      
-      const alreadyExists = (await this.sqlite.isDatabase(this.DB_NAME)).result;
-      if (!alreadyExists) {
-        await this.sqlite.copyFromAssets(false); // copie le .db des assets
-      }
-      // 2. Créer la connexion
-      this.db = await this.sqlite.createConnection(this.DB_NAME, false, 'no-encryption', 1, false);
-      await this.db.open();
-      
-      console.log('Base de données initialisée avec succès');
-    } catch (err) {
-      console.error('Erreur lors de l\'initialisation de la base de données', err);
-      throw err;
-    }
+  constructor()
+  {
+    super()
   }
 
   /**

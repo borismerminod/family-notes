@@ -1,8 +1,13 @@
 import { Routes } from '@angular/router';
 import {NoteList} from './note-list/note-list';
 import { NoteEditor } from './note-editor/note-editor';
+import { Calendar } from './calendar/calendar';
 
 export const routes: Routes = [
+  {
+    path: 'calendar/:selectedMonthDate',
+    component: Calendar
+  },
   {
     path: 'notes',
     component: NoteList
