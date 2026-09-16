@@ -1,21 +1,20 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { NotesService } from '../core/services/notes-service';
+import { NoteBlock } from '../core/models/document.model';
 import { RichTextEditor } from '../rich-text-editor/rich-text-editor';
 
 /**
- * Éditeur / créateur de note — pivot « document riche unique »
- * (cf. .agent/PLAN_PIVOT_DOCUMENT_RICHE.md, .agent/PLAN_TESTS_NOTE_EDITOR.md).
+ * Note editor / creator screen (see .agent/PLAN_MODELE_DOCUMENT_JSON.md).
  *
- * Le contenu est un document HTML unique (`Note.content`), rendu et édité dans le composant
- * `RichTextEditor`, qui regroupe la barre d'outils et la zone `contenteditable`
- * (cf. .agent/PLAN_REFONTE_EDITION_TEXTE.md). L'éditeur de note lui passe le HTML initial
- * via `[content]` et récupère le HTML courant via `(contentChange)` ; toute la mise en forme
- * et l'insertion média sont désormais internes au `RichTextEditor`.
+ * The note content is a JSON block document (`Note.blocks`), rendered and edited by the
+ * `RichTextEditor` component, which bundles the formatting toolbar and the `contenteditable`
+ * area. This component passes the initial blocks down via `[blocks]` and receives the current
+ * blocks via `(blocksChange)`; all formatting and media insertion live inside `RichTextEditor`.
  *
- * Décisions : D1 (route unique : id présent → édition, absent → création),
- * D3 (succès → retour /notes ; échec → on reste, pessimiste),
- * D5 (id inconnu → « note introuvable »).
+ * Decisions: D1 (single route: id present → edit, absent → create),
+ * D3 (success → navigate back to /notes; failure → stay on the editor, pessimistic),
+ * D5 (unknown id → "note not found").
  */
 @Component({
   selector: 'app-note-editor',
@@ -25,63 +24,82 @@ import { RichTextEditor } from '../rich-text-editor/rich-text-editor';
   styleUrl: './note-editor.css',
 })
 export class NoteEditor implements OnInit {
+  /** Current route, read once to tell edit mode (id present) from create mode (absent). */
   private readonly route = inject(ActivatedRoute);
+  /** Data source used to load, create and update the note. */
   private readonly notesService = inject(NotesService);
+  /** Router used to navigate back to the list on save or cancel. */
   private readonly router = inject(Router);
 
+  /** Note title, two-way bound to the title input. */
   title = signal<string>('');
+  /** Note category, two-way bound to the category input. */
   category = signal<string>('');
 
-  /** Contenu HTML travaillé (mis à jour à la frappe, envoyé à l'enregistrement). */
-  content = signal<string>('');
+  /** Working content as blocks (updated by the editor, sent on save). */
+  blocks = signal<NoteBlock[]>([]);
 
-  /** Chargement en cours (mode édition) — affiche l'indicateur. */
+  /** True while the note is being loaded (edit mode) — shows the spinner. */
   isLoading = signal<boolean>(false);
-  /** Note demandée introuvable (id sans correspondance — D5). */
+  /** True when the requested note does not exist (id with no match — D5). */
   notFound = signal<boolean>(false);
-  /** Mode édition (vrai) ou création (faux) — pour le libellé de l'en-tête. */
+  /** True in edit mode, false in create mode — drives the header label. */
   editing = signal<boolean>(false);
 
-  /** Identifiant de la note (mode édition) ou null (mode création — D1). */
+  /** Identifier of the note being edited, or null in create mode (D1). */
   private noteId: string | null = null;
 
+  /**
+   * Angular lifecycle hook; resolves edit vs create mode from the route and, in edit mode,
+   * triggers the initial note load. In create mode the document starts empty.
+   * @returns A promise that resolves once the initial load (if any) has completed.
+   */
   async ngOnInit(): Promise<void> {
     this.noteId = this.route.snapshot.paramMap.get('id');
     this.editing.set(this.noteId !== null);
 
-    // Mode édition : charger la note demandée.
     if (this.noteId) {
-      this.isLoading.set(true);
-      try {
-        const note = await this.notesService.getNoteById(this.noteId);
-        if (note) {
-          this.title.set(note.title);
-          this.category.set(note.category);
-          this.content.set(note.content);
-        } else {
-          this.notFound.set(true);
-        }
-      } catch (err) {
-        console.error('Erreur lors du chargement de la note', err);
-      } finally {
-        this.isLoading.set(false);
-      }
-      return;
+      await this.loadNote(this.noteId);
+    } else {
+      this.blocks.set([]);
     }
-
-    // Mode création : document vierge.
-    this.content.set('');
   }
 
   /**
-   * Enregistre la note. Mode édition → mise à jour ; création → création.
-   * Succès → retour à la liste (D3) ; échec → on reste sur l'éditeur (D4).
+   * Loads the requested note into the editor, toggling the loading state. When the id matches no
+   * note the "not found" state is raised (D5); on failure the error is logged and loading ends so
+   * the screen does not stay stuck on the spinner (D4).
+   * @param id The identifier of the note to load.
+   * @returns A promise that resolves once the load attempt has completed (success or failure).
+   */
+  private async loadNote(id: string): Promise<void> {
+    this.isLoading.set(true);
+    try {
+      const note = await this.notesService.getNoteById(id);
+      if (note) {
+        this.title.set(note.title);
+        this.category.set(note.category);
+        this.blocks.set(note.blocks);
+      } else {
+        this.notFound.set(true);
+      }
+    } catch (err) {
+      console.error('Erreur lors du chargement de la note', err);
+    } finally {
+      this.isLoading.set(false);
+    }
+  }
+
+  /**
+   * Saves the note: updates the existing note in edit mode, creates a new one otherwise. On
+   * success navigates back to the list (D3); on failure the editor stays open (D4).
+   * @returns A promise that resolves once the save attempt has completed.
    */
   async onSave(): Promise<void> {
     const payload = {
       title: this.title(),
       category: this.category(),
-      content: this.content(),
+      blocks: this.blocks(),
     };
     try {
       if (this.noteId) {
@@ -95,7 +113,9 @@ export class NoteEditor implements OnInit {
     }
   }
 
-  /** Annule l'édition : retour à la liste sans rien enregistrer. */
+  /**
+   * Cancels the edition and navigates back to the list without saving anything.
+   */
   onCancel(): void {
     this.router.navigate(['/notes']);
   }

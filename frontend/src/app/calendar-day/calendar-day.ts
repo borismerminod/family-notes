@@ -10,16 +10,15 @@ import { CalendarEvent } from '../calendar-event/calendar-event';
 export class CalendarDay
 {
 
-  @Input()
-  dayNumber : string
+  @Input() dayDate : string
 
-  @Input()
-  calendarEvents : CalendarEvent[]
+  /*@Input()
+  calendarEvents : CalendarEvent[]*/
 
   constructor()
   {
-    this.dayNumber = ""
-    this.calendarEvents = []
+    this.dayDate = ""
+    //this.calendarEvents = []
   }
 
 }

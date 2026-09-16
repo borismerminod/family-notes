@@ -1,10 +1,12 @@
 import { Component, inject, Input, OnInit, signal } from '@angular/core';
 import { CalendarService } from '../core/services/calendar-service';
 import { ActivatedRoute } from '@angular/router';
+import {CalendarDay} from '../calendar-day/calendar-day';
+import { CalendarEvent } from '../calendar-event/calendar-event';
 
 @Component({
   selector: 'app-calendar',
-  imports: [],
+  imports: [CalendarDay],
   templateUrl: './calendar.html',
   styleUrl: './calendar.css',
 })
@@ -20,7 +22,7 @@ export class Calendar implements OnInit
 
   selectedMonthDate! : string
   //private calendarEvents: CalendarEvent[]
-  days = signal<number[]>([])
+  days = signal<string[]>([])
 
   constructor()
   {
@@ -30,16 +32,16 @@ export class Calendar implements OnInit
   async ngOnInit() : Promise<void>
   {
     this.selectedMonthDate = this.route.snapshot.paramMap.get('selectedMonthDate') ?? ''
-    const calendarEvents = await this.calendarService.getEventsFromRangedDate(this.selectedMonthDate)
+    const calendarEvents =  this.calendarService.getEventsFromRangedDate(this.selectedMonthDate)
 
-    this.days.set(this.computeDayNumberFromMonth())
-    console.log(calendarEvents)
+    //this.days.set(await this.computeDayNumberFromMonth())
+    //console.log(this.days())
 
   }
 
-  private computeDayNumberFromMonth() : number[]
+  /*private computeDayNumberFromMonth() : Promise<CalendarDay[]>
   {
-    let days : number[] = []
+    let days : CalendarDay[] = []
     const selectedMonthDateArr = this.selectedMonthDate.split("-")
     
     if(selectedMonthDateArr.length > 1 )
@@ -51,26 +53,36 @@ export class Calendar implements OnInit
       {
         if(this.estBissextile(selectedYear))
         {
-          days = Array.from({ length: 29 }, (_, index) => index + 1)
+          
+          days = Array.from({ length: 29 },  (_, index) => {
+            const dateOfDay : string  = this.selectedMonthDate+"-"+String(index + 1).padStart(2)
+            let events : CalendarEvent[]
+            this.calendarService.getEventsFromDate(dateOfDay).then((eventList) => {
+              events = [...eventList]
+              return {dayDate: dateOfDay, calendarEvents: events}
+            })
+
+
+          })
         }
         else
         {
-          days = Array.from({ length: 28 }, (_, index) => index + 1)
+          days = Array.from({ length: 28 }, (_, index) => this.selectedMonthDate+"-"+String(index + 1).padStart(2))
         }
       }
       if(this.THIRTY_ONE_DAYS_MONTHS.includes(selectedMonth)) 
       {
-        days = Array.from({ length: 31 }, (_, index) => index + 1)
+        days = Array.from({ length: 31 }, (_, index) => this.selectedMonthDate+"-"+String(index + 1).padStart(2))
       }
       else if (this.THIRTY_DAYS_MONTHS.includes(selectedMonth))
       {
-        days = Array.from({ length: 30 }, (_, index) => index + 1)
+        days = Array.from({ length: 30 }, (_, index) => this.selectedMonthDate+"-"+String(index + 1).padStart(2))
       }
     }
 
     return days
-   
-  }
+
+  }*/
 
   private estBissextile(annee: number): boolean 
   {

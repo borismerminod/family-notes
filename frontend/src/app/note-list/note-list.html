@@ -8,6 +8,7 @@
         [value]="searchQuery()"
         (input)="searchQuery.set($any($event.target).value)"
         placeholder="Rechercher une note ou catégorie…"
+        aria-label="Rechercher une note ou une catégorie"
         class="search-input"
       />
     </label>
@@ -17,11 +18,18 @@
     <div class="loading-overlay">
       <div class="spinner"></div>
     </div>
+  } @else if (loadError()) {
+    <div class="empty error-state">
+      <span class="material-icons">error_outline</span>
+      <p>Impossible de charger les notes.</p>
+      <button type="button" class="btn-retry" (click)="loadNotes()">Réessayer</button>
+    </div>
   } @else {
     <div class="notes-list">
       @for (note of filteredNotes(); track note.id) {
         <article
           class="note-card"
+          [style.--c]="accentColor(note)"
           [routerLink]="['/notes/edit', note.id]"
           routerLinkActive="active-card"
         >
@@ -48,7 +56,11 @@
       } @empty {
         <div class="empty">
           <span class="material-icons">sticky_note_2</span>
-          <p>Aucune note ne correspond à votre recherche.</p>
+          @if (searchQuery().trim()) {
+            <p>Aucune note ne correspond à votre recherche.</p>
+          } @else {
+            <p>Aucune note pour l'instant. Touchez « + » pour en créer une.</p>
+          }
         </div>
       }
     </div>

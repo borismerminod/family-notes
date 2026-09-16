@@ -2,11 +2,12 @@
 
 <div>
     <div>{{selectedMonthDate}}</div>
+    @for(day of days(); track day)
+    {
+        <app-calendar-day 
+            [dayDate]="day" 
+        >
+        </app-calendar-day>
+        
+    }
 </div>
-
-@for(day of days(); track day)
-{
-    <div>
-        {{day}}
-    </div>
-}

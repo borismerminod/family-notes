@@ -106,7 +106,8 @@
   outline-offset: -2px;
 }
 
-/* Barre d'accent colorée (décorative, en rotation par position) */
+/* Barre d'accent colorée : couleur (--c) dérivée de la catégorie de la note,
+   fournie en ligne par le composant (accentColor) → stable au filtrage. */
 .note-card::before {
   content: "";
   position: absolute;
@@ -116,14 +117,6 @@
   width: 5px;
   background: var(--c, var(--accent));
 }
-
-/* Rotation de couleurs (issues de NOTE_COLOR_PALETTE) */
-.note-card:nth-child(6n + 1) { --c: #ff3b30; }
-.note-card:nth-child(6n + 2) { --c: #007aff; }
-.note-card:nth-child(6n + 3) { --c: #34c759; }
-.note-card:nth-child(6n + 4) { --c: #af52de; }
-.note-card:nth-child(6n + 5) { --c: #ff9500; }
-.note-card:nth-child(6n + 6) { --c: #8e8e93; }
 
 .card-body {
   flex: 1;
@@ -242,6 +235,25 @@
   font-size: 15px;
   margin: 12px 0 0;
 }
+
+/* ---- État d'erreur de chargement ---- */
+.error-state .material-icons { color: var(--danger); }
+
+.btn-retry {
+  margin-top: 16px;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .1s ease, opacity .2s;
+}
+
+.btn-retry:active { transform: scale(0.96); }
+.btn-retry:hover { opacity: .92; }
 
 /* ---- Chargement ---- */
 .loading-overlay {

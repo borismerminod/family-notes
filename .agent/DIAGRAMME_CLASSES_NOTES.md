@@ -180,3 +180,260 @@ SQLite (@capacitor-community/sqlite, base "family_notes")
 - **`Category`** : modèle **anticipé**. La table `categories` et sa migration ne sont
   pas encore créées ; `Note.category` reste une colonne `TEXT`.
 - **UUID par bloc** : prérequis de la future synchronisation CRDT (`PLAN_NOTES.md`).
+
+---
+
+## 5. Diagramme — Fonctionnalité « note-editor »
+
+> Vision de la fonctionnalité **édition de note** (écran éditeur, éditeur riche et les quatre services
+> du modèle document JSON). Ajouté le 2026-09-16, sur le **modèle pivot réel**
+> `document.model.ts` (décidé le 2026-09-15, cf. `PLAN_MODELE_DOCUMENT_JSON.md`) — celui que
+> `Note.blocks` utilise désormais. Diagramme **distinct** des sections 1–4 : voir la note de
+> conception §8 sur le rapport avec l'ancien modèle de blocs.
+
+```mermaid
+classDiagram
+    direction TB
+
+    %% ---------- Composants (UI) ----------
+    class NoteEditor {
+        <<Component app-note-editor>>
+        -ActivatedRoute route
+        -NotesService notesService
+        -Router router
+        -string noteId?
+        +Signal~string~ title
+        +Signal~string~ category
+        +Signal~NoteBlock[]~ blocks
+        +Signal~boolean~ isLoading
+        +Signal~boolean~ notFound
+        +Signal~boolean~ editing
+        +ngOnInit() Promise~void~
+        -loadNote(id) Promise~void~
+        +onSave() Promise~void~
+        +onCancel() void
+    }
+
+    class RichTextEditor {
+        <<Component app-rich-text-editor>>
+        -DocumentModelService docModel
+        -DocumentRenderService renderer
+        -DocumentParseService parser
+        -DocumentSelectionService selection
+        +InputSignal~NoteBlock[]~ blocks
+        +OutputEmitter~NoteBlock[]~ blocksChange
+        -Signal~DocModel~ model
+        +ActiveState active
+        +NoteColor[] palette
+        +Object[] sizes
+        +Signal~boolean~ imagePopupOpen
+        +Signal~boolean~ videoPopupOpen
+        +onInput() void
+        +onKeydown(event) void
+        +onPaste(event) void
+        +applyMark(mark) void
+        +applyColor(color) void
+        +applySize(size) void
+        +applyList(style) void
+        +insertImageFromUrl() void
+        +onImageFile(event) void
+        +insertVideoFromUrl() void
+    }
+
+    %% ---------- Services du modèle document ----------
+    class DocumentModelService {
+        <<Injectable root — pur>>
+        +normalize(block) TextBlock
+        +isMarkActive(block, from, to, type, value?) boolean
+        +toggleMark(block, from, to, type, value?) TextBlock
+        +setColor(block, from, to, color) TextBlock
+        +setSize(block, from, to, size) TextBlock
+        +clearSize(block, from, to) TextBlock
+        +setBlockKind(model, blockId, kind) DocModel
+        +splitBlock(model, blockId, offset, makeId?) DocModel
+        +mergeBlocks(model, id1, id2) DocModel
+        +insertText(block, offset, s) TextBlock
+        +deleteRange(block, from, to) TextBlock
+    }
+
+    class DocumentRenderService {
+        <<Injectable root>>
+        -DocumentModelService docModel
+        +render(model, options) string
+    }
+
+    class DocumentParseService {
+        <<Injectable root>>
+        -DocumentModelService docModel
+        +parse(html, makeId?) DocModel
+    }
+
+    class DocumentSelectionService {
+        <<Injectable root — couche DOM>>
+        +domToModel(editor) ModelSelection?
+        +modelToDom(editor, point) DomPoint?
+        +setSelection(editor, from, to) boolean
+    }
+
+    %% ---------- Modèle document (document.model.ts) ----------
+    class DocModel {
+        <<type>>
+        NoteBlock[] (tableau plat)
+    }
+
+    class NoteBlock {
+        <<union: TextBlock | ImageBlock | VideoBlock>>
+    }
+
+    class BaseBlock {
+        <<interface>>
+        +string id
+    }
+
+    class TextBlock {
+        +TextBlockKind kind
+        +string text
+        +Mark[] marks
+    }
+
+    class ImageBlock {
+        +'image' kind
+        +string src
+    }
+
+    class VideoBlock {
+        +'video' kind
+        +string url?
+        +string src?
+    }
+
+    class Mark {
+        <<interface>>
+        +MarkType type
+        +number start
+        +number end
+        +string value?
+    }
+
+    %% ---------- Types énumérés / littéraux ----------
+    class MarkType {
+        <<type>>
+        bold | italic | underline | color | size
+    }
+
+    class MarkSize {
+        <<type>>
+        small | large
+    }
+
+    class TextBlockKind {
+        <<type>>
+        text | h1 | h2 | bullet | numbered
+    }
+
+    %% ---------- Types de sélection (document-selection.ts) ----------
+    class ModelPoint {
+        <<interface>>
+        +string blockId
+        +number offset
+    }
+
+    class ModelSelection {
+        <<interface>>
+        +ModelPoint from
+        +ModelPoint to
+    }
+
+    class DomPoint {
+        <<interface>>
+        +Node node
+        +number offset
+    }
+
+    %% ---------- Relations ----------
+    NoteEditor --> NotesService : inject()
+    NoteEditor ..> Note : charge / enregistre
+    NoteEditor *-- RichTextEditor : blocks ↓ / blocksChange ↑
+
+    RichTextEditor --> DocumentModelService : inject()
+    RichTextEditor --> DocumentRenderService : inject()
+    RichTextEditor --> DocumentParseService : inject()
+    RichTextEditor --> DocumentSelectionService : inject()
+    RichTextEditor ..> DocModel : source de vérité
+
+    DocumentRenderService --> DocumentModelService : normalize()
+    DocumentParseService --> DocumentModelService : normalize()
+    DocumentSelectionService ..> ModelSelection : produit
+    ModelSelection *-- ModelPoint : from / to
+    DocumentSelectionService ..> DomPoint : modelToDom()
+
+    DocModel o-- NoteBlock : blocs ordonnés
+    NoteBlock <|.. TextBlock
+    NoteBlock <|.. ImageBlock
+    NoteBlock <|.. VideoBlock
+    BaseBlock <|.. TextBlock
+    BaseBlock <|.. ImageBlock
+    BaseBlock <|.. VideoBlock
+    TextBlock o-- Mark : marks
+    TextBlock ..> TextBlockKind : kind
+    Mark ..> MarkType : type
+    Mark ..> MarkSize : value si size
+
+    Note o-- NoteBlock : blocks JSON
+```
+
+> **Gardes de type** (`document.model.ts`) : `isTextBlock` / `isImageBlock` / `isVideoBlock` /
+> `isVoidBlock` discriminent l'union `NoteBlock` sur `kind` (rendu dynamique + mapping de sélection).
+> Les helpers **privés** de `RichTextEditor` (`commit`, `paint`, `mutateSelectedBlock`,
+> `selectedRange`, `insertBlock`, `refreshActive`…) orchestrent le cycle décrit au §7 et ne sont pas
+> exposés.
+
+## 6. Lecture des relations (note-editor)
+
+| Relation | Signification |
+|---|---|
+| `NoteEditor *-- RichTextEditor` | L'écran éditeur **imbrique** l'éditeur riche : il pousse les blocs initiaux via `[blocks]` et reçoit les blocs courants via `(blocksChange)`. Tout le formatage et l'insertion média vivent dans `RichTextEditor`. |
+| `NoteEditor --> NotesService` | Charge (`getNoteById`), crée (`createNote`) et met à jour (`updateNote`) la note ; navigue vers `/notes` au succès (D3). |
+| `RichTextEditor --> Document*Service` | L'éditeur **injecte** les 4 services : `document-model` (algèbre pure), `document-render` (modèle → HTML), `document-parse` (HTML → modèle), `document-selection` (mapping DOM ⇄ modèle). |
+| `RichTextEditor ..> DocModel` | La **source de vérité est le tableau `blocks`** ; le `contenteditable` n'est qu'un écran rendu depuis le modèle et re-dérivé à la saisie. |
+| `DocumentRender/Parse --> DocumentModelService` | Rendu et parsing **normalisent** chaque bloc via le service pur (marques triées, fusionnées, bornées) → aller-retour `parse(render(m)) == m`. |
+| `DocModel o-- NoteBlock` (agrégation) | Le document est un tableau **plat** de blocs ; les `<ul>`/`<ol>` sont reconstitués au rendu à partir des items consécutifs (D9). |
+| `TextBlock o-- Mark` (agrégation) | Le formatage inline est stocké comme **intervalles plats `[start, end)`** en offsets UTF-16, jamais imbriqués ; le nesting des balises est calculé au rendu (D4/D7). |
+| `Note o-- NoteBlock` | Même agrégation qu'en §1, mais sur le **vrai** modèle `document.model.ts` (cf. note §8). |
+
+## 7. Cycle d'édition (commande → modèle → écran)
+
+```
+RichTextEditor (toolbar / clavier)
+   │  applyMark · applyColor · applySize · applyList · onKeydown (Enter/Backspace) · onPaste
+   ▼
+DocumentModelService (pur, immuable)
+   │  toggleMark · setColor · setSize · splitBlock · mergeBlocks · deleteRange …
+   ▼
+nouveau DocModel  ──►  DocumentRenderService.render(model, {withBlockIds})
+   │                        (modèle → HTML, tag data-block-id par bloc)
+   ▼
+contenteditable repeint  ──►  DocumentSelectionService.setSelection(...)
+   │                              (restaure le curseur au même endroit)
+   ▼
+blocksChange.emit(model)  ──►  NoteEditor.blocks  ──►  NotesService.updateNote/createNote
+                                                          (JSON.stringify des blocs)
+```
+
+> Saisie libre (`onInput`) : le modèle est **re-dérivé du DOM** via `DocumentParseService.parse`
+> (les `data-block-id` préservent l'identité des blocs) **sans** repeindre, pour ne pas faire sauter
+> le curseur ; seule la saisie structurelle (Entrée / Retour arrière) passe par les commandes pures.
+
+## 8. Note de conception — deux modèles de blocs
+
+Les sections 1–4 décrivent le modèle de blocs **historique**
+([note-block.model.ts](../frontend/src/app/core/models/note-block.model.ts) : `HeadingBlock` /
+`TextBlock` avec `content: string` + `TextBlockStyle`, `type` = heading|text|image|video). Il s'agit
+de la vue **pré-pivot** (2026-09-08).
+
+La fonctionnalité **note-editor** a introduit le modèle pivot
+[document.model.ts](../frontend/src/app/core/models/document.model.ts) (2026-09-15), qui **remplace**
+le HTML inline par un couple `text` (texte nu) + `marks` (intervalles) et fusionne la « taille titre »
+dans le `kind` du bloc (`h1`/`h2`). C'est **ce** modèle que `Note.blocks` utilise réellement
+aujourd'hui. Les deux diagrammes décrivent donc **deux époques** ; la réconciliation de la Section 1
+sur `document.model.ts` reste à faire (hors périmètre de cet ajout).

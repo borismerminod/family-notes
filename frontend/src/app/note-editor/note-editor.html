@@ -42,8 +42,8 @@
       <!-- Éditeur de texte riche : barre d'outils + zone d'édition (D2) -->
       <app-rich-text-editor
         class="editor-rich"
-        [content]="content()"
-        (contentChange)="content.set($event)"
+        [blocks]="blocks()"
+        (blocksChange)="blocks.set($event)"
       ></app-rich-text-editor>
 
     </div>

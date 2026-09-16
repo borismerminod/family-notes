@@ -302,4 +302,65 @@ describe('NoteList (écran liste des notes)', () => {
       expect(navigateByUrlSpy).not.toHaveBeenCalled();
     });
   });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 8 — Erreur de chargement (C4)
+  // ---------------------------------------------------------------------------
+  describe('Erreur de chargement', () => {
+    /** Déclenche ngOnInit avec une source en échec, puis stabilise le DOM. */
+    async function renderError(): Promise<void> {
+      notesService.getAllNotes.mockRejectedValue(new Error('boom'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('T8.1 affiche un encart d’erreur quand le chargement échoue', async () => {
+      await renderError();
+      expect(el.querySelector('.error-state')).toBeTruthy();
+      expect(el.querySelector('.spinner')).toBeNull();
+      expect(cards().length).toBe(0);
+    });
+
+    it('T8.2 distingue l’erreur du cas « aucune note » (pas d’encart vide)', async () => {
+      await renderError();
+      // L'état d'erreur ne doit pas être confondu avec la liste vide normale.
+      expect(el.querySelector('.notes-list')).toBeNull();
+    });
+
+    it('T8.3 « Réessayer » relance le chargement et affiche les notes récupérées', async () => {
+      await renderError();
+      // La source se rétablit avant la nouvelle tentative.
+      notesService.getAllNotes.mockResolvedValue(SAMPLE);
+      el.querySelector<HTMLButtonElement>('.btn-retry')!.click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      expect(notesService.getAllNotes).toHaveBeenCalledTimes(2);
+      expect(el.querySelector('.error-state')).toBeNull();
+      expect(cards().length).toBe(SAMPLE.length);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 9 — Messages d’absence distincts (C5)
+  // ---------------------------------------------------------------------------
+  describe('Messages d’absence de notes', () => {
+    function emptyText(): string {
+      return el.querySelector('.empty p')?.textContent?.toLowerCase() ?? '';
+    }
+
+    it('T9.1 base vide : message « aucune note pour l’instant » (invite à créer)', async () => {
+      await render([]);
+      expect(el.querySelector('.empty')).toBeTruthy();
+      expect(emptyText()).toContain("pour l'instant");
+    });
+
+    it('T9.2 recherche infructueuse : message ciblant la recherche', async () => {
+      await render(SAMPLE);
+      type('zzzzz-introuvable');
+      expect(el.querySelector('.empty')).toBeTruthy();
+      expect(emptyText()).toContain('recherche');
+    });
+  });
 });

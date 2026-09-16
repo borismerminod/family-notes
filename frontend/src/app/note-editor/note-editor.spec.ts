@@ -4,33 +4,19 @@ import { vi } from 'vitest';
 
 import { NoteEditor } from './note-editor';
 import { NotesService } from '../core/services/notes-service';
+import { NoteBlock } from '../core/models/document.model';
 
 /**
- * Tests de l'éditeur « document riche » (TDD / boîte noire).
- *
- * Voir .agent/PLAN_TESTS_NOTE_EDITOR.md (réécrit après le pivot « document riche unique »,
- * cf. .agent/PLAN_PIVOT_DOCUMENT_RICHE.md).
- *
- * Décisions appliquées :
- *   D1 — contenu = HTML unique (Note.content: string).
- *   D2 — édition dans une zone contenteditable (.editor-content) ; innerHTML → content.
- *   D3 — gras/italique/souligné via document.execCommand ; jsdom ne l'exécute pas, donc on
- *        teste le CONTRAT (le bouton appelle execCommand) — la transformation réelle se
- *        vérifie en Browser pane.
- *   D4 — insertion image/vidéo via des méthodes qui manipulent `content` (testables par
- *        assertion sur la chaîne HTML). Le câblage fichier/presse-papier est hors unitaire :
- *        l'insertion « directe » est testée via la primitive, avec un data URL.
- *   D5 — enregistrement / navigation / annulation / états : inchangés.
- *
- * Échantillon typé par un contrat local (découplé du modèle tant que le pivot data n'est
- * pas encore réalisé).
+ * Tests de l'éditeur « document riche » (TDD / boîte noire) — version **blocks**.
+ * Le contenu est désormais un `NoteBlock[]` (cf. .agent/PLAN_MODELE_DOCUMENT_JSON.md). L'éditeur
+ * passe `[blocks]` au `RichTextEditor` (composant réel, intégré ici) et récupère `(blocksChange)`.
  */
 
 interface NoteLike {
   id: string;
   title: string;
   category: string;
-  content: string;
+  blocks: NoteBlock[];
   updatedAt: string;
 }
 
@@ -38,11 +24,14 @@ const EXISTING: NoteLike = {
   id: '2',
   title: 'Idées vacances',
   category: 'Voyage',
-  content: '<h1>Destination : Japon</h1><p>Visiter Kyoto et Osaka.</p>',
+  blocks: [
+    { id: 'b1', kind: 'h1', text: 'Destination : Japon', marks: [] },
+    { id: 'b2', kind: 'text', text: 'Visiter Kyoto et Osaka.', marks: [] },
+  ],
   updatedAt: '2026-02-01',
 };
 
-describe('NoteEditor (éditeur document riche)', () => {
+describe('NoteEditor (éditeur document riche, blocks)', () => {
   let fixture: ComponentFixture<NoteEditor>;
   let el: HTMLElement;
   let notesService: {
@@ -56,9 +45,7 @@ describe('NoteEditor (éditeur document riche)', () => {
     vi.restoreAllMocks();
   });
 
-  async function setup(
-    opts: { id?: string; getNoteById?: ReturnType<typeof vi.fn> } = {},
-  ): Promise<void> {
+  async function setup(opts: { id?: string; getNoteById?: ReturnType<typeof vi.fn> } = {}): Promise<void> {
     notesService = {
       getNoteById: opts.getNoteById ?? vi.fn().mockResolvedValue(EXISTING),
       createNote: vi.fn().mockResolvedValue(EXISTING),
@@ -72,9 +59,7 @@ describe('NoteEditor (éditeur document riche)', () => {
         { provide: NotesService, useValue: notesService },
         {
           provide: ActivatedRoute,
-          useValue: {
-            snapshot: { paramMap: convertToParamMap(opts.id ? { id: opts.id } : {}) },
-          },
+          useValue: { snapshot: { paramMap: convertToParamMap(opts.id ? { id: opts.id } : {}) } },
         },
       ],
     }).compileComponents();
@@ -86,14 +71,12 @@ describe('NoteEditor (éditeur document riche)', () => {
     el = fixture.nativeElement as HTMLElement;
   }
 
-  /** ngOnInit + fin du chargement asynchrone + rafraîchissement DOM. */
   async function render(): Promise<void> {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
   }
 
-  // --- Helpers DOM -----------------------------------------------------------
   const titleInput = () => el.querySelector<HTMLInputElement>('.editor-title');
   const categoryInput = () => el.querySelector<HTMLInputElement>('.editor-category');
   const editorContent = () => el.querySelector<HTMLElement>('.editor-content');
@@ -104,7 +87,7 @@ describe('NoteEditor (éditeur document riche)', () => {
     fixture.detectChanges();
   }
 
-  /** Simule une édition du contenu riche (contenteditable). */
+  /** Simule une édition dans le contenteditable → l'éditeur re-dérive les blocs (onInput). */
   function setContent(html: string): void {
     const ce = editorContent()!;
     ce.innerHTML = html;
@@ -115,16 +98,13 @@ describe('NoteEditor (éditeur document riche)', () => {
   const clickSave = () => el.querySelector<HTMLButtonElement>('.btn-save')!.click();
   const clickCancel = () => el.querySelector<HTMLButtonElement>('.btn-cancel')!.click();
 
-  /** Dernier contenu envoyé à create/updateNote. */
-  function savedContent(): string {
-    const call =
-      notesService.updateNote.mock.calls[0] ?? notesService.createNote.mock.calls[0];
-    return (call?.[0] as { content: string }).content;
+  /** Derniers blocs envoyés à create/updateNote. */
+  function savedBlocks(): NoteBlock[] {
+    const call = notesService.updateNote.mock.calls[0] ?? notesService.createNote.mock.calls[0];
+    return (call?.[0] as { blocks: NoteBlock[] }).blocks;
   }
 
-  // ---------------------------------------------------------------------------
-  // Groupe 1 — Chargement en mode édition
-  // ---------------------------------------------------------------------------
+  // --- Groupe 1 — Chargement en mode édition --------------------------------
   describe('Chargement en mode édition', () => {
     it('T1.1 demande la bonne note à la source', async () => {
       await setup({ id: '2' });
@@ -139,7 +119,7 @@ describe('NoteEditor (éditeur document riche)', () => {
       expect(categoryInput()?.value).toBe('Voyage');
     });
 
-    it('T1.3 rend le contenu HTML chargé dans la zone d’édition', async () => {
+    it('T1.3 rend les blocs chargés dans la zone d’édition', async () => {
       await setup({ id: '2' });
       await render();
       expect(editorContent()).toBeTruthy();
@@ -148,9 +128,7 @@ describe('NoteEditor (éditeur document riche)', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Groupe 2 — Chargement en mode création
-  // ---------------------------------------------------------------------------
+  // --- Groupe 2 — Chargement en mode création -------------------------------
   describe('Chargement en mode création', () => {
     it('T2.1 ne demande aucune note à la source', async () => {
       await setup({});
@@ -167,18 +145,14 @@ describe('NoteEditor (éditeur document riche)', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Groupe 3 — États de chargement / erreurs
-  // ---------------------------------------------------------------------------
+  // --- Groupe 3 — États de chargement / erreurs -----------------------------
   describe('États de chargement / erreurs', () => {
     it('T3.1 affiche un indicateur tant que la note n’est pas arrivée', async () => {
       let resolve!: (n: NoteLike) => void;
       const pending = vi.fn().mockReturnValue(new Promise<NoteLike>((r) => (resolve = r)));
       await setup({ id: '2', getNoteById: pending });
-
       fixture.detectChanges();
       expect(el.querySelector('.spinner')).toBeTruthy();
-
       resolve(EXISTING);
     });
 
@@ -203,9 +177,7 @@ describe('NoteEditor (éditeur document riche)', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Groupe 4 — Métadonnées
-  // ---------------------------------------------------------------------------
+  // --- Groupe 4 — Métadonnées ------------------------------------------------
   describe('Métadonnées', () => {
     it('T4.1 le titre modifié est reflété à l’enregistrement', async () => {
       await setup({ id: '2' });
@@ -213,9 +185,7 @@ describe('NoteEditor (éditeur document riche)', () => {
       setInputValue(titleInput()!, 'Nouveau titre');
       clickSave();
       await fixture.whenStable();
-      expect(notesService.updateNote).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Nouveau titre' }),
-      );
+      expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Nouveau titre' }));
     });
 
     it('T4.2 la catégorie modifiée est reflétée à l’enregistrement', async () => {
@@ -224,39 +194,31 @@ describe('NoteEditor (éditeur document riche)', () => {
       setInputValue(categoryInput()!, 'Loisirs');
       clickSave();
       await fixture.whenStable();
-      expect(notesService.updateNote).toHaveBeenCalledWith(
-        expect.objectContaining({ category: 'Loisirs' }),
-      );
+      expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ category: 'Loisirs' }));
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Groupe 5 — Rendu & édition du contenu
-  // ---------------------------------------------------------------------------
+  // --- Groupe 5 — Rendu & édition du contenu --------------------------------
   describe('Rendu & édition du contenu', () => {
     it('T5.1 le contenu chargé est éditable dans .editor-content', async () => {
       await setup({ id: '2' });
       await render();
       const ce = editorContent()!;
-      // jsdom n'implémente pas `isContentEditable` (toujours false) : on vérifie l'attribut.
-      // L'éditabilité réelle est confirmée en Browser pane.
       expect(ce.getAttribute('contenteditable')).toBe('true');
       expect(ce.innerHTML).toContain('Destination : Japon');
     });
 
-    it('T5.2 éditer le contenu est reflété à l’enregistrement', async () => {
+    it('T5.2 éditer le contenu est reflété à l’enregistrement (blocs)', async () => {
       await setup({ id: '2' });
       await render();
       setContent('<p>Nouveau contenu</p>');
       clickSave();
       await fixture.whenStable();
-      expect(savedContent()).toContain('Nouveau contenu');
+      expect(savedBlocks().some((b) => (b as any).text === 'Nouveau contenu')).toBe(true);
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Groupe 6 — Enregistrement
-  // ---------------------------------------------------------------------------
+  // --- Groupe 6 — Enregistrement --------------------------------------------
   describe('Enregistrement', () => {
     it('T6.1 édition → met à jour la bonne note (pas de création)', async () => {
       await setup({ id: '2' });
@@ -264,7 +226,7 @@ describe('NoteEditor (éditeur document riche)', () => {
       clickSave();
       await fixture.whenStable();
       expect(notesService.updateNote).toHaveBeenCalledWith(
-        expect.objectContaining({ id: '2', content: expect.any(String) }),
+        expect.objectContaining({ id: '2', blocks: expect.any(Array) }),
       );
       expect(notesService.createNote).not.toHaveBeenCalled();
     });
@@ -276,9 +238,8 @@ describe('NoteEditor (éditeur document riche)', () => {
       setContent('<p>Contenu</p>');
       clickSave();
       await fixture.whenStable();
-      expect(notesService.createNote).toHaveBeenCalledWith(
-        expect.objectContaining({ title: 'Ma note', content: expect.stringContaining('Contenu') }),
-      );
+      expect(notesService.createNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Ma note' }));
+      expect(savedBlocks().some((b) => (b as any).text === 'Contenu')).toBe(true);
       expect(notesService.updateNote).not.toHaveBeenCalled();
     });
 
@@ -302,9 +263,7 @@ describe('NoteEditor (éditeur document riche)', () => {
     });
   });
 
-  // ---------------------------------------------------------------------------
-  // Groupe 7 — Annulation
-  // ---------------------------------------------------------------------------
+  // --- Groupe 7 — Annulation -------------------------------------------------
   describe('Annulation', () => {
     it('T7.1 revient à la liste sans créer ni mettre à jour', async () => {
       await setup({ id: '2' });
