@@ -1,103 +1,104 @@
-# Plan de Développement : Module "Notes" (Family-notes)
+# Plan de Développement : Module "Notes" (Family-notes) - [Version Mise à Jour]
+
+> ⚠️ **Mise à jour architecture (2026-09-10) — les blocs sont abandonnés.**
+> Le contenu d'une note n'est plus un tableau de blocs JSON mais un **document HTML unique**
+> (`Note.content: string`), édité dans une seule zone `contenteditable`. Toutes les sections
+> ci-dessous mentionnant l'« architecture par blocs », le « tableau d'objets JSON », les
+> `NoteBlock` / UUID par bloc et la synchro **CRDT par bloc** sont **caduques**.
+> Référence : [`PLAN_PIVOT_DOCUMENT_RICHE.md`](PLAN_PIVOT_DOCUMENT_RICHE.md). La synchro
+> multi-appareils éventuelle se fera au niveau du document HTML entier, pas par bloc.
+
+## SQL Schema
+Le schéma de la base de données est défini dans `scripts/schema_notes.sql`.
 
 ## 1. Vision et Objectifs
-Le module "Notes" est le cœur de l'application. Il doit offrir une expérience de prise de notes fluide, riche et résiliente (fonctionne hors-ligne), avec une structure de données prête pour la synchronisation future via CRDT.
+Le module "Notes" est le cœur de l'application. Il doit offrir une expérience de prise de notes fluide, riche et résiliente (fonctionne hors-ligne), basée sur une **architecture par blocs (Block-based Editor)**. Cette structure est choisie pour garantir une synchronisation future via **CRDT** (chaque bloc ayant un ID unique).
 
 ## 2. Spécifications Fonctionnelles
 
 ### A. Page de Gestion (Liste des Notes)
-Une vue de type "Dashboard" pour organiser et retrouver rapidement ses pensées.
-*   **Affichage :** Liste de cartes (Cards) avec aperçu.
-*   **Informations par note :** Titre, Catégorie (avec code couleur), Date de modification, Aperçu textuel.
-*   **Recherche :** Barre de recherche globale (titre et contenu).
-*   **Filtrage :** Filtre par catégorie (menu déroulant ou sélection rapide).
-*   **Actions (CRUD) :**
-    *   **Créer :** Bouton d'ajout rapide.
-    *   **Lire :** Sélection pour l'édition.
-    *   **Modifier :** Accès direct à l'éditeur.
-    *   **Supprimer :** Suppression logique (Soft Delete) pour permettre la synchronisation ultérieure.
+*(Inchangée - Voir version précédente)*
+*   Affichage en cartes, recherche globale, filtrage par catégorie.
 
-### B. Page de l'Éditeur (Rédaction Riche)
-Une interface immersive pour la création de contenu multimédia.
-*   **En-tête :**
-    *   Champ Titre (Style épuré).
-    *   Sélecteur de Catégorie : Liste des catégories existantes + option "Nouvelle catégorie".
-*   **Éditeur de Texte Riche (Rich Text) :**
-    *   **Style de texte :** Gras, Italique, Souligné.
-    *   **Typographie :** Choix de la taille de la police, Choix de la couleur du texte.
-    *   **Structures :** Listes à puces (unordered), Listes numérotées (ordered).
-    *   **Multimédia & Liens :**
-        *   Insertion d'images (depuis la galerie ou caméra).
-        *   Insertion de liens hypertexte.
-        *   Insertion de vidéos (via URL/Embed).
+### B. Page de l'Éditeur (Système de Blocs Intelligents)
+L'interface est composée de blocs indépendants et manipulables.
+
+#### 1. En-tête (Header)
+* **Titre :** Champ de saisie épuré et immersif.
+* **Gestion des Catégories :** 
+    * Champ de saisie intelligent (Autocomplete).
+    * **Comportement dynamique :** Si l'utilisateur saisit une nouvelle catégorie, elle est automatiquement créée et enregistrée en base de données.
+
+#### 2. Zone de Contenu (Le Canvas)
+L'utilisateur construit sa note en empilant des blocs de différents types :
+* **Blocs Texte (Paragraphes / Titres):** 
+    * Saisie directe.
+    * **Formatage Contextuel:** Lors de la sélection d'un texte, une barre d'outils flottante permet d'appliquer:
+        * **Style:** Gras, Italique, Souligné.
+        * **Taille:** Choix de la taille de la police (Petite, Normale, Grande, Titre).
+        * **Couleur:** Application d'une couleur à partir d'une palette prédéfinie (ex: 8 couleurs de base).
+    * **Détection automatique:** Un lien URL collé est automatiquement transformé en lien cliquable (Chip). Un lien vidéo (YouTube/Vimeo) est transformé en lecteur vidéo intégré (Embed).
+* **Blocs Multimédia:**
+    * **Images:** Ajout via bouton (Galerie/Caméra) ou via **Copier-Coller** direct de l'image.
+    * **Vidéos:** Ajout via lien ou via fichier local.
+
+#### 3. Interactions Utilisateur
+* **Organisation:** Possibilité de déplacer les blocs par Drag & Drop.
+* **Insertion rapide:** Boutons "+" pour ajouter un nouveau bloc (Texte, Image, Vidéo) à la suite.
 
 ---
 
 ## 3. Architecture Technique & Stockage
 
 ### A. Stratégie de Stockage (Hybride)
-Pour optimiser les performances et la stabilité du téléphone :
-1.  **SQLite (Base de données structurée) :** Stockage de toute la logique et des données légères.
-    *   Titres, contenus (format Delta/JSON), relations, catégories, timestamps, états de suppression.
-2.  **File System (Système de fichiers du téléphone) :** Stockage des fichiers lourds.
-    *   Images, fichiers vidéo.
-    *   *Note : La base de données SQLite ne stockera que le chemin (path) vers ces fichiers.*
+1.  **SQLite (Base de données structurée):** 
+    *   Stockage de la structure de la note sous forme d'un **tableau d'objets JSON** (un objet par bloc).
+    *   Chaque bloc possède un `id` (UUID) unique pour la synchronisation.
+    *   Stockage des métadonnées (titre, catégorie, ordre des blocs).
+2.  **File System (Système de fichiers du téléphone):** 
+    *   Stockage des fichiers lourds (images, vidéos) via Capacitor Filesystem.
+    *   La base de données ne stocke que le chemin local (`file_path`).
 
-### B. Modèle de Données (Schéma SQLite)
-
-#### Table `categories`
-- `id`: UUID (Primary Key)
-- `name`: TEXT (Unique)
-- `color`: TEXT (Hex code)
-- `updated_at`: INTEGER (Timestamp)
-
-#### Table `notes`
-- `id`: UUID (Primary Key)
-- `title`: TEXT
-- `content`: TEXT (Format JSON/Delta pour le rich text)
-- `category_id`: UUID (Foreign Key -> categories.id)
-- `created_at`: INTEGER (Timestamp)
-- `updated_at`: INTEGER (Timestamp)
-- `is_deleted`: BOOLEAN (Pour la gestion de la synchronisation CRDT)
-
-#### Table `media_assets` (Gestion des fichiers)
-- `id`: UUID (Primary Key)
-- `note_id`: UUID (Foreign Key -> notes.id)
-- `file_path`: TEXT (Chemin local vers le fichier sur le téléphone)
-- `file_type`: TEXT (image, video)
-- `created_at`: INTEGER (Timestamp)
+### B. Modèle de Données (Schéma JSON par Note)
+```json
+[
+  { "id": "uuid-1", "type": "heading", "content": "Titre", "style": { "size": "h1" } },
+  { "id": "uuid-2", "type": "text", "content": "Texte avec <span style='color:#FF0000'>couleur</span>", "style": { "size": "normal" } },
+  { "id": "uuid-3", "type": "image", "src": "path/to/img.jpg" },
+  { "id": "uuid-4", "type": "video", "url": "https://youtube.com/..." }
+]
+```
 
 ### C. Stack Technologique
-*   **Framework :** Angular (Architecture modulaire, RxJS pour la réactivité).
-*   **Mobile :** Capacitor (Accès natif au FileSystem et Camera).
-*   **Base de données :** `capacitor-sqlite`.
-*   **Moteur de texte riche :** Quill.js ou Tiptap (pour la gestion du formatage et du format JSON/Delta).
+* **Framework:** Angular (Architecture modulaire, RxJS pour l'auto-sauvegarde).
+* **Mobile:** Capacitor (Accès Camera, Filesystem, Clipboard).
+* **Base de données:** `capacitor-sqlite`.
 
 ---
 
 ## 4. Phases de Développement
 
 ### Phase 1 : Fondations & Data
-- Configuration de SQLite et des services de base.
-- Création des modèles de données (Interfaces TypeScript).
-- Implémentation du `NotesService` (CRUD de base sur SQLite).
+- [ ] Configuration de SQLite et des modèles TypeScript (`Note`, `NoteBlock`).
+- [ ] Implémentation du `NotesService` (CRUD sur le tableau de blocs).
+- [ ] Mise en place de l'auto-sauvegarde (Auto-save) avec debounce.
 
-### Phase 2 : Interface de Liste
-- Développement de la `NotesListComponent`.
-- Implémentation du système de filtrage par catégorie.
-- Mise en place de la barre de recherche.
+### Phase 2 : Structure de l'Éditeur
+- [ ] Développement du composant `NoteEditor` (le Canvas).
+- [ ] Implémentation du `BlockRenderer` (gestion dynamique des types de blocs).
+- [ ] Développement du `CategoryPicker` (gestion de l'ajout automatique).
 
-### Phase 3 : L'Éditeur de Texte
-- Intégration de l'éditeur riche (Quill/Tiptap).
-- Gestion du sélecteur de catégorie dynamique.
-- Mise en place de la barre d'outils (Style, Listes, Couleurs).
+### Phase 3 : Édition de Texte & Styles
+- [ ] Implémentation du composant de texte avec gestion de la sélection.
+- [ ] Création de la barre d'outils flottante (Gras, Italique, Taille, Couleur).
+- [ ] Développement du système de détection de liens et vidéos.
 
-### Phase 4 : Multimédia & Fichiers
-- Intégration de la caméra/galerie via Capacitor.
-- Logique d'enregistrement des fichiers sur le disque et liaison dans SQLite.
-- Gestion de l'affichage des images et vidéos dans l'éditeur.
+### Phase 4 : Multimédia & Copier-Coller
+- [ ] Intégration de la gestion des images (Bouton + Interception du Clipboard).
+- [ ] Intégration de la gestion des vidéos (Embed + Fichiers locaux).
+- [ ] Gestion du stockage physique des fichiers via Capacitor.
 
 ### Phase 5 : Finalisation & UX
-- Animations de transition.
-- Gestion des états "Hors-ligne".
-- Test de performance et robustesse.
+- [ ] Implémentation du Drag & Drop pour les blocs.
+- [ ] Optimisation des performances de rendu.
+- [ ] Tests de robustesse (mode hors-ligne, gestion des fichiers corrompus).

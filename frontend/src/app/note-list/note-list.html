@@ -1,0 +1,78 @@
+<div class="note-list-container">
+  <header class="topbar">
+    <h1>Mes Notes</h1>
+    <label class="search">
+      <span class="icon icon-search" aria-hidden="true"></span>
+      <input
+        type="text"
+        [value]="searchQuery()"
+        (input)="searchQuery.set($any($event.target).value)"
+        placeholder="Rechercher une note ou catégorie…"
+        aria-label="Rechercher une note ou une catégorie"
+        class="search-input"
+      />
+    </label>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  } @else if (loadError()) {
+    <div class="empty error-state">
+      <span class="material-icons">error_outline</span>
+      <p>Impossible de charger les notes.</p>
+      <button type="button" class="btn-retry" (click)="loadNotes()">Réessayer</button>
+    </div>
+  } @else {
+    <div class="notes-list">
+      @for (note of filteredNotes(); track note.id) {
+        <article
+          class="note-card"
+          [style.--c]="accentColor(note)"
+          [routerLink]="['/notes/edit', note.id]"
+          routerLinkActive="active-card"
+        >
+          <div class="card-body">
+            <h3 class="note-title">{{ note.title }}</h3>
+            <div class="card-meta">
+              <span class="cat-pill">
+                <span class="cat-dot"></span>
+                {{ note.category }}
+              </span>
+              <span class="note-date">{{ note.updatedAt | date:'shortDate' }}</span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            class="btn-icon btn-danger"
+            (click)="onDeleteNote(note); $event.stopPropagation()"
+            aria-label="Supprimer"
+          >
+            <span class="icon icon-trash" aria-hidden="true"></span>
+          </button>
+        </article>
+      } @empty {
+        <div class="empty">
+          <span class="material-icons">sticky_note_2</span>
+          @if (searchQuery().trim()) {
+            <p>Aucune note ne correspond à votre recherche.</p>
+          } @else {
+            <p>Aucune note pour l'instant. Touchez « + » pour en créer une.</p>
+          }
+        </div>
+      }
+    </div>
+  }
+
+  <button type="button" class="fab" (click)="onAddNote()" aria-label="Nouvelle note">
+    <span class="icon icon-plus" aria-hidden="true"></span>
+  </button>
+
+  <app-confirm-dialog
+    [message]="confirmMessage()"
+    [(open)]="confirmOpen"
+    (answered)="onDeleteConfirmed($event)"
+  />
+</div>

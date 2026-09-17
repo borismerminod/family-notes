@@ -48,3 +48,52 @@ docker-compose down
 ```powershell
 docker-compose logs -f
 ```
+
+## 4. Génération Angular (via Docker)
+Pour générer des fichiers Angular (services, composants, classes) sans installer l'Angular CLI localement, utilisez la commande suivante :
+
+**Générer un service :**
+```powershell
+docker run --rm -v "$(pwd)/frontend:/app" -w /app node:lts npx @angular/cli generate service <chemin/nom-du-service>
+```
+
+**Générer un composant :**
+```powershell
+docker run --rm -v "$(pwd)/frontend:/app" -w /app node:lts npx @angular/cli generate component <chemin/nom-du-composant>
+```
+
+**Générer une classe (modèle) :**
+```powershell
+docker run --rm -v "$(pwd)/frontend:/app" -w /app node:lts npx @angular/cli generate class <chemin/nom-du-modele>
+```
+
+**Lancer l'application en dev :**
+```powershell
+docker run --rm -it -p 4200:4200 -v "$(pwd)/frontend:/app" -w /app node:lts npx ng serve --host 0.0.0.0
+```
+
+**Faire le build:**
+```powershell
+docker run --rm -v "$(pwd)/frontend:/app" -w /app node:lts npx ng build
+```
+
+**Construire et lancer un conteneur pour le dev**
+```
+docker build --target development -t family-notes-web ./frontend
+
+docker run --rm -it -p 4200:4200 -v "$(pwd)/frontend:/app" -v /app/node_modules family-notes-web
+``̀
+
+**Lancer les tests**
+```powershell
+docker run --rm -it -v "$(pwd)/frontend:/app" -w /app node:lts npx ng test
+```
+
+*Note : Pour ne pas générer de fichiers de tests (`.spec.ts`), ajoutez `--skip-tests` à la fin de la commande.*
+
+## 5. Synchronisation des Plugins (Capacitor)
+Après avoir installé un nouveau plugin (ex: `@capacitor-community/sqlite`), vous devez synchroniser Capacitor pour que les changements soient appliqués aux dossiers natifs (Android/iOS).
+
+```powershell
+docker run --rm -v "$(pwd)/frontend:/app" -w /app node:lts npx cap sync
+```

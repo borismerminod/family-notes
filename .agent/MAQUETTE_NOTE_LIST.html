@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Maquette — Liste des notes (mobile)</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+  /* ============================================================
+     MAQUETTE — Page CRUD « Mes Notes » (mobile-first)
+     But : proposition visuelle pour remplacer note-list.html/.css
+     Palette alignée sur NOTE_COLOR_PALETTE (block-style.model.ts)
+     ============================================================ */
+
+  :root {
+    --bg: #f2f2f7;            /* fond iOS clair */
+    --surface: #ffffff;
+    --surface-2: #f7f7fa;
+    --text: #1c1c1e;
+    --text-2: #8e8e93;
+    --separator: #e5e5ea;
+    --accent: #007aff;        /* bleu système = --accent principal */
+    --danger: #ff3b30;
+    --radius: 16px;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.04);
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+    /* couleurs de catégorie (extraites de la palette du projet) */
+    --cat-rouge: #ff3b30;
+    --cat-orange: #ff9500;
+    --cat-jaune: #ffcc00;
+    --cat-vert: #34c759;
+    --cat-bleu: #007aff;
+    --cat-violet: #af52de;
+    --cat-gris: #8e8e93;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --surface-2: #2c2c2e;
+      --text: #ffffff;
+      --text-2: #98989f;
+      --separator: #38383a;
+      --shadow: 0 1px 3px rgba(0,0,0,.4);
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #d8d8dc;
+    color: var(--text);
+    display: flex;
+    justify-content: center;
+    padding: 24px;
+    min-height: 100vh;
+  }
+
+  /* ---- Cadre téléphone (uniquement pour la maquette) ---- */
+  .phone {
+    width: 390px;
+    max-width: 100%;
+    height: 800px;
+    background: var(--bg);
+    border-radius: 44px;
+    box-shadow: 0 0 0 12px #1a1a1c, 0 24px 60px rgba(0,0,0,.35);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- Barre supérieure (sticky) ---- */
+  .topbar {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    padding: calc(14px + var(--safe-top)) 20px 10px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid var(--separator);
+  }
+
+  .topbar h1 {
+    margin: 0 0 12px;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  /* ---- Recherche ---- */
+  .search {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-2);
+    border-radius: 12px;
+    padding: 9px 12px;
+    color: var(--text-2);
+  }
+  @media (prefers-color-scheme: dark) { .search { background: var(--surface-2); } }
+  .search .material-icons { font-size: 20px; }
+  .search input {
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 16px;
+    width: 100%;
+  }
+  .search input::placeholder { color: var(--text-2); }
+
+  /* ---- Filtres catégories (scroll horizontal) ---- */
+  .chips {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 12px 20px 4px;
+    scrollbar-width: none;
+  }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: 0 0 auto;
+    padding: 7px 14px;
+    border-radius: 20px;
+    background: var(--surface);
+    color: var(--text);
+    font-size: 14px;
+    font-weight: 600;
+    border: 0.5px solid var(--separator);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .chip.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ---- Zone défilable des notes ---- */
+  .scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 16px 120px;
+  }
+
+  /* ---- Carte note ---- */
+  .card {
+    position: relative;
+    display: flex;
+    gap: 14px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .card:active { transform: scale(0.985); transition: transform .1s; }
+
+  /* barre d'accent colorée = catégorie */
+  .card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+    background: var(--c, var(--cat-gris));
+  }
+
+  .card .body { flex: 1; min-width: 0; padding-left: 4px; }
+  .card .title {
+    margin: 0 0 4px;
+    font-size: 17px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .card .preview {
+    margin: 0 0 10px;
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.35;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card .meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 12px;
+    color: var(--text-2);
+  }
+  .card .cat-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: color-mix(in srgb, var(--c) 14%, transparent);
+    color: var(--c);
+    font-weight: 600;
+  }
+  .card .cat-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+
+  /* bouton "…" — grande cible tactile (44px) */
+  .card .more {
+    align-self: flex-start;
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    border: none;
+    background: var(--surface-2);
+    color: var(--text-2);
+    display: flex; align-items: center; justify-content: center;
+    flex: 0 0 auto;
+  }
+  .card .more .material-icons { font-size: 20px; }
+
+  /* ---- Carte en mode "swipe" révélant Supprimer (démo statique) ---- */
+  .swipe-demo .card { transform: translateX(-84px); box-shadow: none; }
+  .swipe-demo {
+    position: relative;
+    border-radius: var(--radius);
+    background: var(--danger);
+    margin-bottom: 12px;
+    overflow: hidden;
+  }
+  .swipe-demo .delete-reveal {
+    position: absolute;
+    right: 0; top: 0; bottom: 0;
+    width: 84px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+  }
+  .swipe-demo .card { margin-bottom: 0; }
+
+  /* ---- Menu contextuel (démo statique) ---- */
+  .sheet {
+    position: absolute;
+    left: 12px; right: 12px;
+    bottom: calc(16px + var(--safe-bottom));
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.25);
+    overflow: hidden;
+    z-index: 40;
+  }
+  .sheet button {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 17px;
+    padding: 15px 18px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 0.5px solid var(--separator);
+  }
+  .sheet button:last-child { border-bottom: none; }
+  .sheet button.danger { color: var(--danger); }
+  .sheet .material-icons { font-size: 22px; }
+
+  /* ---- Bouton flottant (FAB) — pouce ---- */
+  .fab {
+    position: absolute;
+    right: 20px;
+    bottom: calc(24px + var(--safe-bottom));
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    border: none;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(0,122,255,.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 30;
+  }
+  .fab .material-icons { font-size: 30px; }
+
+  /* ---- État vide ---- */
+  .empty {
+    text-align: center;
+    padding: 80px 30px;
+    color: var(--text-2);
+  }
+  .empty .material-icons { font-size: 54px; opacity: .4; }
+  .empty p { font-size: 15px; margin: 12px 0 0; }
+
+  /* ---- Légende maquette ---- */
+  .legend {
+    position: fixed;
+    left: 24px; bottom: 24px;
+    font: 12px -apple-system, sans-serif;
+    color: #555;
+    max-width: 300px;
+  }
+  @media (max-width: 900px) { .legend { display: none; } }
+</style>
+</head>
+<body>
+
+  <div class="phone">
+
+    <!-- Barre supérieure -->
+    <div class="topbar">
+      <h1>Mes Notes</h1>
+      <label class="search">
+        <span class="material-icons">search</span>
+        <input type="text" placeholder="Rechercher une note ou catégorie…">
+      </label>
+    </div>
+
+    <!-- Filtres catégories -->
+    <div class="chips">
+      <span class="chip active">Toutes</span>
+      <span class="chip"><span class="dot" style="background:var(--cat-rouge)"></span>Courses</span>
+      <span class="chip"><span class="dot" style="background:var(--cat-bleu)"></span>École</span>
+      <span class="chip"><span class="dot" style="background:var(--cat-vert)"></span>Santé</span>
+      <span class="chip"><span class="dot" style="background:var(--cat-violet)"></span>Vacances</span>
+    </div>
+
+    <!-- Liste des notes -->
+    <div class="scroll">
+
+      <div class="card" style="--c:var(--cat-rouge)">
+        <div class="body">
+          <h3 class="title">Liste des courses</h3>
+          <p class="preview">Lait, œufs, pain complet, tomates cerises, yaourts nature… ne pas oublier le café.</p>
+          <div class="meta">
+            <span class="cat-pill"><span class="dot"></span>Courses</span>
+            <span>Aujourd'hui</span>
+          </div>
+        </div>
+        <button class="more"><span class="material-icons">more_horiz</span></button>
+      </div>
+
+      <div class="card" style="--c:var(--cat-bleu)">
+        <div class="body">
+          <h3 class="title">Réunion parents-profs</h3>
+          <p class="preview">Jeudi 18h — salle B12. Préparer les questions sur les maths et l'inscription au voyage scolaire.</p>
+          <div class="meta">
+            <span class="cat-pill"><span class="dot"></span>École</span>
+            <span>Hier</span>
+          </div>
+        </div>
+        <button class="more"><span class="material-icons">more_horiz</span></button>
+      </div>
+
+      <!-- Démo : glisser pour révéler Supprimer -->
+      <div class="swipe-demo">
+        <div class="delete-reveal">
+          <span class="material-icons">delete</span>
+          Suppr.
+        </div>
+        <div class="card" style="--c:var(--cat-vert)">
+          <div class="body">
+            <h3 class="title">Rendez-vous pédiatre</h3>
+            <p class="preview">Vaccin de rappel + carnet de santé. Pensez à noter le poids et la taille de Léo.</p>
+            <div class="meta">
+              <span class="cat-pill"><span class="dot"></span>Santé</span>
+              <span>2 sept.</span>
+            </div>
+          </div>
+          <button class="more"><span class="material-icons">more_horiz</span></button>
+        </div>
+      </div>
+
+      <div class="card" style="--c:var(--cat-violet)">
+        <div class="body">
+          <h3 class="title">Idées vacances d'été</h3>
+          <p class="preview">Location dans le Jura, rando au lac, réserver le camping avant avril pour le tarif early-bird.</p>
+          <div class="meta">
+            <span class="cat-pill"><span class="dot"></span>Vacances</span>
+            <span>28 août</span>
+          </div>
+        </div>
+        <button class="more"><span class="material-icons">more_horiz</span></button>
+      </div>
+
+      <div class="card" style="--c:var(--cat-orange)">
+        <div class="body">
+          <h3 class="title">Anniversaire de Mamie</h3>
+          <p class="preview">Réserver le restaurant, commander le gâteau au chocolat, prévenir tonton Marc.</p>
+          <div class="meta">
+            <span class="cat-pill"><span class="dot"></span>Famille</span>
+            <span>20 août</span>
+          </div>
+        </div>
+        <button class="more"><span class="material-icons">more_horiz</span></button>
+      </div>
+
+    </div>
+
+    <!-- Bouton flottant : nouvelle note -->
+    <button class="fab" aria-label="Nouvelle note"><span class="material-icons">add</span></button>
+
+    <!-- Menu contextuel (affiché ici pour montrer le design du "…") -->
+    <div class="sheet">
+      <button><span class="material-icons">edit</span> Éditer</button>
+      <button><span class="material-icons">push_pin</span> Épingler</button>
+      <button class="danger"><span class="material-icons">delete</span> Supprimer</button>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <strong>Maquette liste des notes</strong><br>
+    Mobile-first · palette du projet · cibles tactiles ≥ 44px.<br>
+    À la place des icônes minuscules en coin : bouton « … » → menu, glisser pour supprimer, FAB pour créer.
+    Le menu du bas est montré ouvert pour illustrer le design.
+  </div>
+
+</body>
+</html>

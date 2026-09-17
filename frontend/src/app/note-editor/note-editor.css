@@ -1,0 +1,169 @@
+/* ============================================================
+   Éditeur de note « document riche » — feuille de style (mobile-first)
+   Cf. maquette : .agent/MAQUETTE_NOTE_EDITOR.html
+   Palette et conventions alignées sur note-list.css.
+   Volontairement en thème clair (fond blanc) — pas de bascule sombre.
+   ============================================================ */
+
+:host {
+  --bg: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f2f2f7;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  height: 100vh;
+  height: 100dvh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.note-editor {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ---- Barre de navigation (toujours visible) ---- */
+.editor-navbar {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(10px + var(--safe-top)) 12px 10px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.editor-navbar-title {
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn-nav {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  padding: 6px 4px;
+  cursor: pointer;
+}
+
+.btn-nav.btn-save {
+  font-weight: 700;
+}
+
+/* ---- Zone défilable ---- */
+.editor-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---- En-tête : titre + catégorie ---- */
+.editor-head {
+  padding: 16px 20px 14px;
+  background: var(--surface);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.editor-title {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  padding: 0;
+}
+
+.editor-title::placeholder {
+  color: var(--text-2);
+  opacity: 0.6;
+}
+
+.editor-category-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.editor-category-label {
+  flex: 0 0 auto;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.editor-category {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 0;
+}
+
+.editor-category::placeholder {
+  color: var(--text-2);
+  font-weight: 400;
+}
+
+/* ---- Éditeur de texte riche (toolbar + zone d'édition, composant dédié) ---- */
+/* La barre d'outils collante est gérée dans le composant lui-même (encapsulation). */
+.editor-rich {
+  display: block;
+  padding-bottom: calc(60px + var(--safe-bottom));
+}
+
+/* ---- Chargement ---- */
+.editor-loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---- Note introuvable ---- */
+.not-found {
+  text-align: center;
+  padding: 80px 30px;
+  color: var(--text-2);
+  font-size: 15px;
+}

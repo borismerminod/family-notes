@@ -1,0 +1,51 @@
+@if (isLoading()) {
+  <div class="editor-loading">
+    <div class="spinner"></div>
+  </div>
+} @else if (notFound()) {
+  <p class="not-found">Note introuvable.</p>
+} @else {
+  <div class="note-editor">
+
+    <!-- Barre de navigation : Annuler · titre · Enregistrer -->
+    <header class="editor-navbar">
+      <button type="button" class="btn-nav btn-cancel" (click)="onCancel()">Annuler</button>
+      <span class="editor-navbar-title">{{ editing() ? 'Modifier la note' : 'Nouvelle note' }}</span>
+      <button type="button" class="btn-nav btn-save" (click)="onSave()">Enregistrer</button>
+    </header>
+
+    <div class="editor-scroll">
+
+      <!-- En-tête : titre + catégorie -->
+      <div class="editor-head">
+        <input
+          type="text"
+          class="editor-title"
+          [value]="title()"
+          (input)="title.set($any($event.target).value)"
+          placeholder="Titre de la note"
+        />
+
+        <div class="editor-category-field">
+          <label class="editor-category-label" for="note-category">Catégorie</label>
+          <input
+            id="note-category"
+            type="text"
+            class="editor-category"
+            [value]="category()"
+            (input)="category.set($any($event.target).value)"
+            placeholder="Aucune"
+          />
+        </div>
+      </div>
+
+      <!-- Éditeur de texte riche : barre d'outils + zone d'édition (D2) -->
+      <app-rich-text-editor
+        class="editor-rich"
+        [blocks]="blocks()"
+        (blocksChange)="blocks.set($event)"
+      ></app-rich-text-editor>
+
+    </div>
+  </div>
+}
