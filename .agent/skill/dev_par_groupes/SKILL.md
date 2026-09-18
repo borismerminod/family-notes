@@ -7,7 +7,8 @@ description: Développe un composant/service en TDD, un groupe de contrôle à l
 
 > **But :** transformer un `.spec.ts` rouge en composant fonctionnel, **groupe par groupe**,
 > en faisant valider l'utilisateur à chaque étape. Suite naturelle du skill
-> [`plan_test`](../plan_test/SKILL.md).
+> [`ecrire_tests`](../ecrire_tests/SKILL.md) (lui-même issu de
+> [`plan_test`](../plan_test/SKILL.md)).
 >
 > **Invocation :** « implémente le composant X », « résous le Groupe N », « continue le
 > développement » — dès lors qu'un plan de test et un `.spec.ts` existent déjà.
@@ -21,7 +22,8 @@ description: Développe un composant/service en TDD, un groupe de contrôle à l
 
 - Un **plan de test** (`.agent/PLAN_TESTS_<CIBLE>.md`) et un **`.spec.ts`** existent, avec
   des cas groupés (`Groupe N`, cas `T1.1`, `T1.2`…) et des **décisions D#** figées.
-  Sinon, produire d'abord le plan + spec via le skill [`plan_test`](../plan_test/SKILL.md).
+  Sinon, produire d'abord le plan via [`plan_test`](../plan_test/SKILL.md) puis le `.spec.ts`
+  via [`ecrire_tests`](../ecrire_tests/SKILL.md).
 - Connaître le **périmètre validé** (ex. « squelette fonctionnel ») et l'**ordre TDD suggéré**
   du plan.
 
@@ -87,5 +89,5 @@ avant de continuer. Ne pas enchaîner de soi-même.
 - Les **décisions D#** du plan font foi pour les choix de comportement.
 - Toujours rapporter l'**état réel** (jamais « c'est bon » sans preuve de la suite).
 - Conventions de test & mock : voir mémoire `test-setup-notes-service` et le skill
-  `plan_test`. Pour rendre ce skill invocable en `/`-commande, le copier dans un dossier de
+  `ecrire_tests`. Pour rendre ce skill invocable en `/`-commande, le copier dans un dossier de
   skills reconnu (ex. `.claude/skills/dev_par_groupes/`), le frontmatter est déjà prêt.
