@@ -1,11 +1,11 @@
 <div>
-    {{dayDate}}
+    {{dayDate.date}}
 
     <ul>
-        <!--@for(calendarEvent of calendarEvents; track calendarEvent.id)
+        @for(calendarEvent of dayDate.events; track calendarEvent.id)
         {
-            <li>calendarEvent.title</li>
-    }-->
+            <li>{{calendarEvent.title}}</li>
+        }
     </ul>
     
 

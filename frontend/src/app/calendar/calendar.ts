@@ -1,12 +1,12 @@
 import { Component, inject, Input, OnInit, signal } from '@angular/core';
 import { CalendarService } from '../core/services/calendar-service';
-import { ActivatedRoute } from '@angular/router';
-import {CalendarDay} from '../calendar-day/calendar-day';
-import { CalendarEvent } from '../calendar-event/calendar-event';
+import {CalendarDay} from '../core/models/calendar-day.model'
+import { CalendarEvent } from '../core/models/calendar-event.model';
+import {CalendarDayComponent} from '../calendar-day/calendar-day'
 
 @Component({
   selector: 'app-calendar',
-  imports: [CalendarDay],
+  imports: [CalendarDayComponent],
   templateUrl: './calendar.html',
   styleUrl: './calendar.css',
 })
@@ -18,11 +18,9 @@ export class Calendar implements OnInit
 
 
   private calendarService = inject(CalendarService)
-  private route = inject(ActivatedRoute)
-
   selectedMonthDate! : string
   //private calendarEvents: CalendarEvent[]
-  days = signal<string[]>([])
+  days = signal<CalendarDay[]>([])
 
   constructor()
   {
@@ -31,17 +29,22 @@ export class Calendar implements OnInit
 
   async ngOnInit() : Promise<void>
   {
-    this.selectedMonthDate = this.route.snapshot.paramMap.get('selectedMonthDate') ?? ''
-    const calendarEvents =  this.calendarService.getEventsFromRangedDate(this.selectedMonthDate)
-
-    //this.days.set(await this.computeDayNumberFromMonth())
-    //console.log(this.days())
+    this.selectedMonthDate = this.getSelectedMonthDate()
+    //
+    this.days.set(await this.computeDayNumberFromMonth())
+    console.log(this.days())
 
   }
 
-  /*private computeDayNumberFromMonth() : Promise<CalendarDay[]>
+  private getSelectedMonthDate(): string
   {
-    let days : CalendarDay[] = []
+    const segments = window.location.pathname.split('/').filter(Boolean)
+    return segments.at(-1) ?? ''
+  }
+
+  private async computeDayNumberFromMonth() : Promise<CalendarDay[]>
+  {
+    let days : Promise<CalendarDay>[] = []
     const selectedMonthDateArr = this.selectedMonthDate.split("-")
     
     if(selectedMonthDateArr.length > 1 )
@@ -54,35 +57,46 @@ export class Calendar implements OnInit
         if(this.estBissextile(selectedYear))
         {
           
-          days = Array.from({ length: 29 },  (_, index) => {
+          days = Array.from({ length: 29 },  async (_, index) => {
             const dateOfDay : string  = this.selectedMonthDate+"-"+String(index + 1).padStart(2)
-            let events : CalendarEvent[]
-            this.calendarService.getEventsFromDate(dateOfDay).then((eventList) => {
-              events = [...eventList]
-              return {dayDate: dateOfDay, calendarEvents: events}
-            })
-
-
+            let events : CalendarEvent[] = await this.calendarService.getEventsFromDate(dateOfDay)
+            let day : CalendarDay = {date: dateOfDay, events: events}
+            return day
           })
         }
         else
         {
-          days = Array.from({ length: 28 }, (_, index) => this.selectedMonthDate+"-"+String(index + 1).padStart(2))
+          days = Array.from({ length: 28 },  async (_, index) => {
+            const dateOfDay : string  = this.selectedMonthDate+"-"+String(index + 1).padStart(2)
+            let events : CalendarEvent[] = await this.calendarService.getEventsFromDate(dateOfDay)
+            let day : CalendarDay = {date: dateOfDay, events: events}
+            return day
+          })
         }
       }
       if(this.THIRTY_ONE_DAYS_MONTHS.includes(selectedMonth)) 
       {
-        days = Array.from({ length: 31 }, (_, index) => this.selectedMonthDate+"-"+String(index + 1).padStart(2))
+        days = Array.from({ length: 31 },  async (_, index) => {
+          const dateOfDay : string  = this.selectedMonthDate+"-"+String(index + 1).padStart(2)
+          let events : CalendarEvent[] = await this.calendarService.getEventsFromDate(dateOfDay)
+          let day : CalendarDay = {date: dateOfDay, events: events}
+          return day
+        })
       }
       else if (this.THIRTY_DAYS_MONTHS.includes(selectedMonth))
       {
-        days = Array.from({ length: 30 }, (_, index) => this.selectedMonthDate+"-"+String(index + 1).padStart(2))
+        days = Array.from({ length: 30 },  async (_, index) => {
+          const dateOfDay : string  = this.selectedMonthDate+"-"+String(index + 1).padStart(2)
+          let events : CalendarEvent[] = await this.calendarService.getEventsFromDate(dateOfDay)
+          let day : CalendarDay = {date: dateOfDay, events: events}
+          return day
+        })  
       }
     }
 
-    return days
+    return Promise.all(days)
 
-  }*/
+  }
 
   private estBissextile(annee: number): boolean 
   {

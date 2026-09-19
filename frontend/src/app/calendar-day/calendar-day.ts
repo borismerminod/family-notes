@@ -1,5 +1,6 @@
 import { Component, Input } from '@angular/core';
-import { CalendarEvent } from '../calendar-event/calendar-event';
+import { CalendarDay } from '../core/models/calendar-day.model';
+
 
 @Component({
   selector: 'app-calendar-day',
@@ -7,18 +8,14 @@ import { CalendarEvent } from '../calendar-event/calendar-event';
   templateUrl: './calendar-day.html',
   styleUrl: './calendar-day.css',
 })
-export class CalendarDay
+export class CalendarDayComponent
 {
 
-  @Input() dayDate : string
+  @Input() dayDate! : CalendarDay
 
-  /*@Input()
-  calendarEvents : CalendarEvent[]*/
 
   constructor()
   {
-    this.dayDate = ""
-    //this.calendarEvents = []
   }
 
 }
