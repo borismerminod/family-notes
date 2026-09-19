@@ -1,0 +1,101 @@
+/* ============================================
+   Calendrier — style "Mes Notes"
+   ============================================ */
+
+.calendar {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 22px 28px;
+  background: #ffffff;
+  border-radius: 22px;
+  box-shadow: 0 10px 35px rgba(92, 66, 160, 0.10);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* --- En-tête du mois --- */
+.month-title {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1e2230;
+  text-transform: capitalize;
+  letter-spacing: -0.01em;
+  margin-bottom: 22px;
+}
+
+/* --- Grille 7 colonnes --- */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+/* --- Lettres des jours (L M M J V S D) --- */
+.weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 1000;
+  color: #a3a3b5;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 10px;
+}
+
+/* --- Cellule d'un jour (le composant hôte) --- */
+app-calendar-day {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  background: #f6f5fb;
+  color: #3b3f4d;
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  overflow : hidden;
+  transition: background .15s ease, color .15s ease,
+              transform .15s ease, box-shadow .15s ease;
+}
+
+app-calendar-day:hover {
+  background: #ede9fe;
+  color: #7c3aed;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(124, 58, 237, 0.18);
+}
+
+/* Jour courant — classe .today sur l'hôte */
+app-calendar-day.today {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.35);
+}
+
+/* Jour sélectionné — classe .selected */
+app-calendar-day.selected {
+  background: #ffffff;
+  color: #7c3aed;
+  box-shadow: 0 0 0 2px #8b5cf6 inset;
+}
+
+/* --- Jours hors du mois courant — classe .other-month --- */
+app-calendar-day.other-month {
+  background: #fbfbfd;
+  color: #c4c4d0;
+  font-weight: 400;
+}
+
+app-calendar-day.other-month:hover {
+  background: #f3f2f9;
+  color: #a78bda;
+  transform: none;          /* on retire le soulèvement pour les garder discrets */
+  box-shadow: none;
+}
+
+/* --- Cellules vides (remplace le <div>TEST</div>) --- */
+.empty-cell {
+  aspect-ratio: 1 / 1;
+}
