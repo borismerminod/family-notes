@@ -1,24 +1,22 @@
 import { Component, Input } from '@angular/core';
-import { CalendarEvent } from '../calendar-event/calendar-event';
+import { CalendarDay } from '../core/models/calendar-day.model';
+import { DatePipe } from '@angular/common';
+
 
 @Component({
   selector: 'app-calendar-day',
-  imports: [],
+  imports: [DatePipe],
   templateUrl: './calendar-day.html',
   styleUrl: './calendar-day.css',
 })
-export class CalendarDay
+export class CalendarDayComponent
 {
 
-  @Input() dayDate : string
+  @Input() dayDate! : CalendarDay
 
-  /*@Input()
-  calendarEvents : CalendarEvent[]*/
 
   constructor()
   {
-    this.dayDate = ""
-    //this.calendarEvents = []
   }
 
 }

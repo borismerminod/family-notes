@@ -1,0 +1,83 @@
+/* calendar-day.component.css */
+:host {
+  display: block;
+  height: 100%;
+  min-height: 0;
+}
+
+.day-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
+  min-height: 0;
+  padding: 8px 9px;
+  overflow: hidden;
+}
+
+/* barre d'accent violette quand le jour a au moins un événement */
+.day-cell:has(.event) {
+  box-shadow: inset 3px 0 0 #8b5cf6;
+}
+
+.day-number {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7280;
+  letter-spacing: -0.01em;
+}
+
+.day-events {
+  flex: 1 1 auto;
+  min-height: 0;          /* ★ garde le troncage/scroll interne */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* la pastille façon badge de catégorie */
+.event {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 8px;
+  background: #f3e8ff;
+  color: #7c3aed;
+  font-size: 0.68rem;
+  font-weight: 600;
+}
+
+.event::before {                 /* le point coloré */
+  content: "";
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.event-title {
+  min-width: 0;                  /* indispensable pour l'ellipsis en flex */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* --- Cohérence avec les états gérés par le parent --- */
+
+/* sur le jour courant (fond dégradé), on éclaircit texte et pastilles */
+:host(.today) .day-number { color: #ffffff; }
+:host(.today) .event {
+  background: rgba(255, 255, 255, 0.22);
+  color: #ffffff;
+}
+
+/* jours hors mois : on atténue aussi les pastilles */
+:host(.other-month) .event { opacity: 0.5; }

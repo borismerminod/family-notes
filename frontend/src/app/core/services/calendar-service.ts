@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { SqliteService } from './sqlite-service';
-import { CalendarEvent } from '../../calendar-event/calendar-event';
+import { CalendarEvent } from '../models/calendar-event.model';
 
 /**
  * SQLite-backed data source for calendar events. Reads events from the `events` table and maps
@@ -27,8 +27,7 @@ export class CalendarService extends SqliteService {
       date: row.date,
       start_time: row.start_time ?? '',
       end_time: row.end_time ?? '',
-      created_at: row.created_at ?? '',
-      updated_at: row.updated_at ?? '',
+      noteIds: row.note_ids ?? [],
     };
   }
 
@@ -56,7 +55,7 @@ export class CalendarService extends SqliteService {
       const request = 'SELECT * FROM events WHERE date = ?';
       const res = await this.db.query(request, [date]);
       const rows = res.values ?? [];
-      return rows.map((row) => this.mapRowToEvent(row));
+      return Promise.all(rows.map((row) => this.mapRowToEvent(row)));
     });
   }
 }
