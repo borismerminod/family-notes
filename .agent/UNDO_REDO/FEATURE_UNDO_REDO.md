@@ -255,3 +255,12 @@ en cours **afin de** ne pas consommer de mémoire à l'infini ni mélanger l'his
   DOM et le modèle**. Ce risque est **documenté et accepté** pour cette version : il n'est **pas
   traité** ici (neutralisation et prise en charge des raccourcis reportées à un lot ultérieur —
   cf. D4 et « Hors périmètre »).
+
+- **L2 — Insertion image/vidéo non annulable dans cette version (limitation acceptée).**
+  L'insertion d'une image ou d'une vidéo passe par `insertBlock`, qui applique son propre
+  `model.set` + rendu + `blocksChange.emit` **sans** traverser `commit` ni empiler de pas
+  d'historique. En conséquence, une insertion média **n'ajoute aucun pas** : le bouton *annuler*
+  ne la défait pas. À la différence de l'insertion de **lien** (via `commit`) et du **collage**
+  (via `insertBlocksAtSelection` → `commit`), qui sont, eux, **bien annulables**. Ce risque est
+  **documenté et accepté** pour cette version : le routage de `insertBlock` par l'historique
+  (constat C3 / refactoring R1 de la revue) est **reporté à un lot ultérieur**.

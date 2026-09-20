@@ -953,4 +953,156 @@ describe('RichTextEditor (Phase 3, modèle blocks)', () => {
       });
     });
   });
+
+  // ==========================================================================
+  // Undo/Redo (Lot D — les deux boutons de la barre)
+  // Réf : .agent/UNDO_REDO/PLAN_TESTS_RTE_TOOLBAR_UNDO_REDO.md (validé 2026-09-20), cas TD1–TD5.
+  // TDD boîte noire : on monte le vrai composant et on interroge le MARKUP des deux boutons
+  // .btn-undo / .btn-redo (présence, title/aria-label, icône, appartenance au toolbar-group de
+  // tête), l'attribut natif `disabled` (= !canUndo()/!canRedo(), lu APRÈS fixture.detectChanges()),
+  // le câblage clic→méthode (espion léger vi.spyOn(component,'undo'/'redo'), DD7) et le
+  // (mousedown) preventDefault (DD6). Le Lot D N'AJOUTE AUCUNE API : canUndo/canRedo/undo/redo
+  // existent déjà (Lots B/C, verts) — il ne teste que le template. L'algèbre (Lot A) et le câblage
+  // du cycle (Lot B) / la garde d'echo (Lot C) ne sont PAS re-testés ici.
+  // ==========================================================================
+  describe('Undo/Redo (Lot D — boutons de barre)', () => {
+    const undoBtn = () => host.querySelector<HTMLButtonElement>('.btn-undo');
+    const redoBtn = () => host.querySelector<HTMLButtonElement>('.btn-redo');
+
+    // --- Groupe 1 — Présence, libellés, icône & placement (US1, US3, D8) -----
+    describe('Groupe 1 — présence, libellés, icône & placement', () => {
+      it('TD1.1 un bouton .btn-undo est présent avec title/aria-label « Annuler » et l\'icône ↶ (US1, D8 — DD2/DD3)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+        const btn = undoBtn();
+        expect(btn).toBeTruthy();
+        expect(btn!.getAttribute('title')).toBe('Annuler');
+        expect(btn!.getAttribute('aria-label')).toBe('Annuler');
+        expect(btn!.textContent).toContain('↶');
+      });
+
+      it('TD1.2 un bouton .btn-redo est présent avec title/aria-label « Rétablir » et l\'icône ↷ (US3, D8 — DD2/DD3)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+        const btn = redoBtn();
+        expect(btn).toBeTruthy();
+        expect(btn!.getAttribute('title')).toBe('Rétablir');
+        expect(btn!.getAttribute('aria-label')).toBe('Rétablir');
+        expect(btn!.textContent).toContain('↷');
+      });
+
+      it('TD1.3 les deux boutons appartiennent à un toolbar-group dédié en tête de .format-toolbar (H2/D8 — DD1)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+        const group = host.querySelector<HTMLElement>('.format-toolbar .toolbar-group:first-child');
+        expect(group).toBeTruthy();
+        expect(group!.querySelector('.btn-undo')).toBeTruthy();
+        expect(group!.querySelector('.btn-redo')).toBeTruthy();
+      });
+    });
+
+    // --- Groupe 2 — `disabled` reflète canUndo() / canRedo() (US2, US4) ------
+    describe('Groupe 2 — disabled reflète les signaux', () => {
+      it('TD2.1 état initial : les deux boutons sont disabled (rien à annuler ni à rétablir — US2/US4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        fixture.detectChanges();
+        expect(undoBtn()!.disabled).toBe(true);
+        expect(redoBtn()!.disabled).toBe(true);
+      });
+
+      it('TD2.2 après une commande : .btn-undo actif (passé) et .btn-redo disabled (pas de futur — US2/US4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        fixture.detectChanges();
+        expect(undoBtn()!.disabled).toBe(false);
+        expect(redoBtn()!.disabled).toBe(true);
+      });
+
+      it('TD2.3 après un undo : .btn-redo actif (futur) et .btn-undo redisabled (retour au pas initial — US2/US4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        fixture.detectChanges();
+        expect(redoBtn()!.disabled).toBe(false);
+        expect(undoBtn()!.disabled).toBe(true);
+      });
+
+      it('TD2.4 une nouvelle action après un undo purge le futur : .btn-redo redevient disabled, .btn-undo actif (US4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo(); // ⇒ redo actif
+        selectInBlock('b1', 4, 7);
+        component.applyColor('#FF0000'); // nouvelle commande ⇒ futur vidé
+        fixture.detectChanges();
+        expect(redoBtn()!.disabled).toBe(true);
+        expect(undoBtn()!.disabled).toBe(false);
+      });
+    });
+
+    // --- Groupe 3 — Le clic d'un bouton actif pilote undo()/redo() (US1, US3)
+    describe('Groupe 3 — clic actif → méthode', () => {
+      it('TD3.1 cliquer .btn-undo actif appelle component.undo() une fois (US1 — DD7)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        fixture.detectChanges(); // .btn-undo actif
+        const spy = vi.spyOn(component, 'undo');
+        undoBtn()!.click();
+        expect(spy).toHaveBeenCalledTimes(1);
+      });
+
+      it('TD3.2 cliquer .btn-redo actif appelle component.redo() une fois (US3 — DD7)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        fixture.detectChanges(); // .btn-redo actif
+        const spy = vi.spyOn(component, 'redo');
+        redoBtn()!.click();
+        expect(spy).toHaveBeenCalledTimes(1);
+      });
+    });
+
+    // --- Groupe 4 — Un bouton disabled ne déclenche aucune action (US2, US4) -
+    describe('Groupe 4 — clic disabled = no-op', () => {
+      it('TD4.1 cliquer .btn-undo disabled n\'appelle pas undo() et n\'émet rien (US2)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        fixture.detectChanges(); // .btn-undo disabled (état initial)
+        const spy = vi.spyOn(component, 'undo');
+        const count = emitted.length;
+        undoBtn()!.click(); // un <button disabled> ne dispatche pas de click
+        fixture.detectChanges();
+        expect(spy).not.toHaveBeenCalled();
+        expect(emitted.length).toBe(count);
+      });
+
+      it('TD4.2 cliquer .btn-redo disabled n\'appelle pas redo() et n\'émet rien (US4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        fixture.detectChanges(); // .btn-redo disabled (état initial)
+        const spy = vi.spyOn(component, 'redo');
+        const count = emitted.length;
+        redoBtn()!.click();
+        fixture.detectChanges();
+        expect(spy).not.toHaveBeenCalled();
+        expect(emitted.length).toBe(count);
+      });
+    });
+
+    // --- Groupe 5 — (mousedown) preventDefault : ne vole pas le focus (C5) ---
+    describe('Groupe 5 — mousedown preventDefault', () => {
+      it('TD5.1 un mousedown annulable sur .btn-undo est preventDefault (focus préservé — C5, DD6)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+        const evt = new MouseEvent('mousedown', { cancelable: true, bubbles: true });
+        undoBtn()!.dispatchEvent(evt);
+        expect(evt.defaultPrevented).toBe(true);
+      });
+
+      it('TD5.2 un mousedown annulable sur .btn-redo est preventDefault (focus préservé — C5, DD6)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+        const evt = new MouseEvent('mousedown', { cancelable: true, bubbles: true });
+        redoBtn()!.dispatchEvent(evt);
+        expect(evt.defaultPrevented).toBe(true);
+      });
+    });
+  });
 });

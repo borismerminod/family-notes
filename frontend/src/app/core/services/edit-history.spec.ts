@@ -79,6 +79,19 @@ describe('EditHistory (historique undo/redo, pur)', () => {
       expect(history.undo()).toBeNull();
       expect(history.redo()).toBeNull();
     });
+
+    it('T1.5 reset(e0) referme la salve ouverte (C1/R2, APPROCHE §3) : une frappe rapprochée (Δ < 500 ms) après reset OUVRE un nouveau pas au lieu d\'écraser le seed en place', () => {
+      // Scénario réel (Lot C recharge une note) : une salve est OUVERTE dans la note précédente,
+      // puis `reset` réamorce l'historique. Sans `run = null` dans `reset`, l'ancien run survit :
+      // la 1re frappe de la note rechargée à Δ < 500 ms « prolonge en place » (entries[index] =
+      // entry) et ÉCRASE le pas d'ouverture propre — coalescing inter-note parasite.
+      const r0 = mkEntry('r0');
+      history.recordTyping(mkEntry('eA'), 1000, false); // salve ouverte (run.open = true, lastEditAt = 1000)
+      history.reset(r0); // réamorçage : DOIT refermer la salve (run = null)
+      history.recordTyping(mkEntry('rA'), 1400, false); // Δ = 400 < 500 : NE doit PAS étendre l'ancien run
+      expect(history.canUndo()).toBe(true); // un nouveau pas a bien été empilé (rA distinct de r0)
+      expect(history.undo()).toBe(r0); // le seed du reset est intact, atteignable par undo
+    });
   });
 
   // ==========================================================================

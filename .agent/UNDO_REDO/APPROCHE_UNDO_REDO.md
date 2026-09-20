@@ -77,8 +77,10 @@ classDiagram
         -commit(model, at) void
         -recordTyping() void
         -applyEntry(entry) void
-        -seedHistory(model) void
     }
+    %% Amorçage : PAS de méthode seedHistory() dédiée. Le pas initial est semé EAGER par l'effect
+    %% du constructeur (garde d'echo C4 + history.reset au vrai (re)chargement, Lot C) ; le latch
+    %% historySeeded a été retiré (R3) car devenu code mort depuis ce seed eager.
 
     %% ---------- Historique (à créer) ----------
     class EditHistory {
@@ -151,7 +153,7 @@ classDiagram
 | `HistoryEntry` | **NEW** | Un pas = snapshot `DocModel` (référence immuable) + `ModelSelection`. |
 | `TypingRun` | **NEW** | État interne de coalescing d'une salve de frappe (horodatage + ouvert/fermé). |
 | `RichTextEditor.canUndo/canRedo` | **NEW** | Signaux pilotant l'état actif/inactif des 2 boutons. |
-| `RichTextEditor.undo/redo/recordTyping/applyEntry/seedHistory` | **NEW** | Câblage boutons + enregistrement + re-application. |
+| `RichTextEditor.undo/redo/recordTyping/applyEntry` | **NEW** | Câblage boutons + enregistrement + re-application. Amorçage : pas de `seedHistory()` dédié — seed eager via l'effect (cf. dernière ligne). |
 | `RichTextEditor.commit` | **MOD** | Devient le **point unique** qui pousse aussi un pas d'historique. |
 | `RichTextEditor` effect `blocks()` | **MOD** | Garde d'identité (C4) : réinit histo au vrai (re)chargement. |
 
@@ -232,7 +234,7 @@ sinon :
 si dernierCaractèreInséré est un séparateur (espace/ponctuation, C3) :
     run.open = false                  // le prochain caractère ouvrira un nouveau pas (frontière de mot)
 ```
-> `coalesceExpiré(now)` = `now - run.lastEditAt > TYPING_COALESCE_PAUSE_MS` (C3, **500 ms** figé). Le composant peut aussi
+> `coalesceExpiré(now)` = `now - run.lastEditAt >= TYPING_COALESCE_PAUSE_MS` (C3/D2, **500 ms** figé, borne **inclusive** : Δ = 500 ms pile scelle → nouveau pas ; Δ = 499 ms regroupe — cf. `edit-history.ts`, `now - lastEditAt < 500` pour étendre). Le composant peut aussi
 > **appeler `seal()`** sur pause via un timer (Lot B) ; l'expiration côté `now` est un filet de sécurité.
 > La détection « séparateur / dernier caractère » se fait côté composant (qui connaît la frappe) et est
 > passée en paramètre à `recordTyping` (drapeau `isBoundary`) pour garder `EditHistory` **sans DOM**.

@@ -6,6 +6,33 @@
 -->
 <div class="rich-text-editor">
   <div class="format-toolbar" role="toolbar" aria-label="Mise en forme">
+    <!-- Undo / Redo (Lot D) — dedicated group in the toolbar head; disabled reflects
+         canUndo()/canRedo() (Lot B signals), click drives undo()/redo() (Lot B methods). -->
+    <div class="toolbar-group">
+      <button
+        type="button"
+        class="btn-undo"
+        [disabled]="!canUndo()"
+        (mousedown)="$event.preventDefault()"
+        (click)="undo()"
+        title="Annuler"
+        aria-label="Annuler"
+      >
+        ↶
+      </button>
+      <button
+        type="button"
+        class="btn-redo"
+        [disabled]="!canRedo()"
+        (mousedown)="$event.preventDefault()"
+        (click)="redo()"
+        title="Rétablir"
+        aria-label="Rétablir"
+      >
+        ↷
+      </button>
+    </div>
+
     <!-- Semantic marks -->
     <div class="toolbar-group">
       <button

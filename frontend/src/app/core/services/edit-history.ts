@@ -64,6 +64,10 @@ export class EditHistory {
   reset(entry: HistoryEntry): void {
     this.entries = [entry];
     this.index = 0;
+    // Close any open typing run (APPROCHE §3): a reset (e.g. Lot C reloading a note) must not let
+    // the previous note's burst survive, otherwise the first keystroke of the reseeded note within
+    // the pause window would extend the seed step in place instead of opening a new one (C1).
+    this.run = null;
   }
 
   /** Pushes one discrete command as a new step (truncates future, enforces the limit). */
@@ -84,11 +88,11 @@ export class EditHistory {
     const canExtend = this.run !== null && this.run.open && now - this.run.lastEditAt < TYPING_COALESCE_PAUSE_MS;
     if (canExtend) {
       this.entries[this.index] = entry; // extend in place, no new step (D8)
+      this.run!.lastEditAt = now; // slide the coalescing window onto the latest keystroke
     } else {
       this.push(entry); // open a new step (push resets `run` to null)
-      this.run = { lastEditAt: now, open: true };
+      this.run = { lastEditAt: now, open: true }; // opens the run with `lastEditAt` already at `now`
     }
-    this.run!.lastEditAt = now;
     // A word boundary (separator) extends/opens the step THEN seals it, so the next keystroke
     // starts a new step even within the pause window (D5).
     if (isBoundary) {

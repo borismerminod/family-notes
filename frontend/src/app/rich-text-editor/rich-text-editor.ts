@@ -7,6 +7,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -98,21 +99,14 @@ export class RichTextEditor {
   /** Current model: the internal source of truth mirrored into the DOM. */
   private readonly model = signal<DocModel>([]);
 
-  // --- Undo/Redo wiring (Lot B) ----------------------------------------------
-  // NOTE Lot B: only the minimal, type-correct API surface is present here so the test bundle
-  // compiles and the new TB1–TB6 specs fail on ASSERTIONS (red), not on TypeScript. The actual
-  // undo/redo logic (commit -> push, onInput -> recordTyping, applyEntry, syncButtons, pause timer)
-  // is implemented in the next step (`dev_par_groupes`); the bodies below are intentionally no-ops.
+  // --- Undo/Redo wiring (Lots B/C) -------------------------------------------
+  // The undo/redo logic is fully implemented below: `commit` -> `history.push`, `onInput` ->
+  // `history.recordTyping`, `applyEntry` (undo/redo replay without re-push), `syncButtons` and the
+  // inactivity pause timer. The initial history step is seeded EAGERLY by the constructor effect on
+  // every real (re)load of a note (Lot C), so `commit`/`onInput` always stack on a seeded history.
 
   /** Pure undo/redo history owned by this editor (C1: one instance per editor). */
   private readonly history = new EditHistory();
-
-  /**
-   * Lazy-seeding latch (DB4/Q3): `false` until the first action (`commit`, or the first keystroke in
-   * later groups) seeds the note's starting state as the initial history step, so undoing the very
-   * first action restores the note as opened. The clean per-note (re)load seed is Lot C.
-   */
-  private historySeeded = false;
 
   /**
    * Cancel handle of the currently armed inactivity seal timer (Q2/DB7), or `null` when none is
@@ -149,6 +143,10 @@ export class RichTextEditor {
    * anti-loop), then refreshes the button signals. No-op when there is no past step.
    */
   undo(): void {
+    // Cancel any pending inactivity seal timer (C6/R5): `history.undo()` already seals the open run,
+    // so a later expiry would only re-seal (no-op) and re-sync the same button state. Cancelling it
+    // is behaviour-identical and avoids a redundant deferred callback.
+    this.cancelSeal?.();
     const entry = this.history.undo();
     if (entry) this.applyEntry(entry);
     this.syncButtons();
@@ -161,6 +159,9 @@ export class RichTextEditor {
    * purged it — US4).
    */
   redo(): void {
+    // Cancel any pending inactivity seal timer (C6/R5): symmetric to `undo()`; a stale expiry would
+    // only re-seal (no-op) and re-sync unchanged buttons. Behaviour-identical, no deferred callback.
+    this.cancelSeal?.();
     const entry = this.history.redo();
     if (entry) this.applyEntry(entry);
     this.syncButtons();
@@ -223,12 +224,30 @@ export class RichTextEditor {
    */
   constructor() {
     // Incoming blocks -> model + render (skipped while focused: caret-jump guard during typing).
+    // Undo/Redo (Lot C): guards the history against the echo of our own `blocksChange.emit` and
+    // resets it on a real (re)load of a note (C4/DC1–DC3, DC7).
     effect(() => {
       const incoming = this.blocks();
+      // Echo guard (C4/DC1): captured BEFORE `model.set`, else the comparison would always be true.
+      // An echo is our own emit bouncing back into `blocks` (same reference as `model()`); a real
+      // (re)load carries a different reference. Read via `untracked` so `model` is NOT a dependency
+      // of this effect: otherwise `commit`'s `model.set` would re-run the effect and, with the input
+      // `blocks` still holding the pre-command reference, spuriously reset+repaint the just-committed
+      // change. The effect must re-run on `blocks()` changes only (R4: guard by reference).
+      const isEcho = incoming === untracked(this.model);
       this.model.set(incoming);
       const editor = this.editorEl();
       if (editor && document.activeElement !== editor) {
         this.paint(editor, incoming);
+      }
+      if (!isEcho) {
+        // Real (re)load of a note (US6, D7, DC3): drop the previous note's history. Cancel any
+        // pending seal timer first (DC7/Q3-mineur) so a burst from the OLD note is never sealed, then
+        // reset on the reloaded content — this eager seed is the note's clean initial step, so the
+        // first `commit`/`onInput` stacks on it directly. Both buttons go inactive (US2/US4/US6).
+        this.cancelSeal?.();
+        this.history.reset({ model: incoming, selection: null });
+        this.syncButtons();
       }
     });
 
@@ -251,17 +270,12 @@ export class RichTextEditor {
   onInput(event?: Event): void {
     const editor = this.editorEl();
     if (!editor) return;
-    const previousModel = this.model();
     const model = this.parser.parse(editor.innerHTML);
     this.model.set(model);
     this.blocksChange.emit(model);
-    // Undo/Redo (Lot B): free typing feeds the history WITHOUT repainting (R2: no caret jump).
-    // Lazy seeding (DB4/Q3): the first keystroke seeds the note's starting state so undoing the
-    // whole burst restores the note as opened.
-    if (!this.historySeeded) {
-      this.history.reset({ model: previousModel, selection: null });
-      this.historySeeded = true;
-    }
+    // Undo/Redo (Lot B): free typing feeds the history WITHOUT repainting (R2: no caret jump). The
+    // starting state is already seeded eagerly by the constructor effect (Lot C), so the burst simply
+    // records onto that clean initial step — undoing the whole burst restores the note as opened.
     const selection = this.selection.domToModel(editor);
     const isBoundary = this.isBoundaryData((event as InputEvent | undefined)?.data);
     this.history.recordTyping({ model, selection }, this.now(), isBoundary);
@@ -481,19 +495,14 @@ export class RichTextEditor {
    * @param at The single-block range where the caret/selection should be restored after rendering.
    */
   private commit(newModel: DocModel, at: SelectedRange): void {
-    const previousModel = this.model();
     this.model.set(newModel);
     const editor = this.editorEl();
     if (!editor) return;
     this.paint(editor, newModel);
     this.selection.setSelection(editor, { blockId: at.blockId, offset: at.from }, { blockId: at.blockId, offset: at.to });
-    // Undo/Redo (Lot B): `commit` is the single push point of the history. On the first action the
-    // history is still cold → lazily seed the starting state (previous model) as the initial step
-    // (DB4/Q3) so undoing this action returns the note as opened, then push the resulting state.
-    if (!this.historySeeded) {
-      this.history.reset({ model: previousModel, selection: null });
-      this.historySeeded = true;
-    }
+    // Undo/Redo (Lot B): `commit` is the single push point of the history. The note's initial step is
+    // already seeded eagerly by the constructor effect (Lot C), so we push the resulting state onto
+    // that clean seed — undoing this action returns the note as opened.
     this.history.push({ model: newModel, selection: this.toSelection(at) });
     this.blocksChange.emit(newModel);
     this.refreshActive();
@@ -719,6 +728,13 @@ export class RichTextEditor {
   /**
    * Inserts a media block after the block of the current selection (or at the end of the document),
    * assigning it a fresh id. Unlike text edits, the selection is not restored afterwards.
+   *
+   * Deliberately does its own `model.set` + `paint` + `blocksChange.emit` **without** going through
+   * `commit` and therefore **without** an `history.push`: image/video insertion is not undoable in
+   * this version (known limitation **L2**, constat C3 / refactoring R1 — routing `insertBlock` through
+   * the history is deferred to a later lot; cf. FEATURE_UNDO_REDO.md § Limitations connues). Link
+   * insertion (`insertLinkFromUrl`) and paste (`insertBlocksAtSelection`) DO go through `commit` and
+   * stay undoable.
    * @param block The media block to insert; its `id` is replaced with a fresh UUID.
    */
   private insertBlock(block: NoteBlock): void {
