@@ -20,7 +20,8 @@ import {
 import { DocumentModelService } from '../core/services/document-model';
 import { DocumentRenderService } from '../core/services/document-render';
 import { DocumentParseService } from '../core/services/document-parse';
-import { DocumentSelectionService } from '../core/services/document-selection';
+import { DocumentSelectionService, ModelSelection } from '../core/services/document-selection';
+import { EditHistory, HistoryEntry, TYPING_COALESCE_PAUSE_MS } from '../core/services/edit-history';
 import { ExternalLinkService } from '../core/services/external-link';
 import { sanitizeHttpUrl } from '../core/services/url-sanitize';
 
@@ -97,6 +98,93 @@ export class RichTextEditor {
   /** Current model: the internal source of truth mirrored into the DOM. */
   private readonly model = signal<DocModel>([]);
 
+  // --- Undo/Redo wiring (Lot B) ----------------------------------------------
+  // NOTE Lot B: only the minimal, type-correct API surface is present here so the test bundle
+  // compiles and the new TB1–TB6 specs fail on ASSERTIONS (red), not on TypeScript. The actual
+  // undo/redo logic (commit -> push, onInput -> recordTyping, applyEntry, syncButtons, pause timer)
+  // is implemented in the next step (`dev_par_groupes`); the bodies below are intentionally no-ops.
+
+  /** Pure undo/redo history owned by this editor (C1: one instance per editor). */
+  private readonly history = new EditHistory();
+
+  /**
+   * Lazy-seeding latch (DB4/Q3): `false` until the first action (`commit`, or the first keystroke in
+   * later groups) seeds the note's starting state as the initial history step, so undoing the very
+   * first action restores the note as opened. The clean per-note (re)load seed is Lot C.
+   */
+  private historySeeded = false;
+
+  /**
+   * Cancel handle of the currently armed inactivity seal timer (Q2/DB7), or `null` when none is
+   * pending. Re-arming a keystroke cancels the previous one; the `DestroyRef` cancels it on teardown
+   * (TB6.3). The wrapper also neutralises the timer callback so a stale expiry after cancel/destroy
+   * is an inert no-op (never touches a destroyed component).
+   */
+  private cancelSeal: (() => void) | null = null;
+
+  /**
+   * Injectable clock seam (Q2/DB3): the component reads "now" through this function so tests can
+   * feed deterministic timestamps for coalescing. Defaults to `Date.now`.
+   */
+  now: () => number = () => Date.now();
+
+  /**
+   * Injectable pause-timer scheduler seam (Q2/DB7): schedules the inactivity `seal()` and returns a
+   * cancel function (registered in `DestroyRef` at implementation time). Tests override it to drive
+   * the pause deterministically and to observe cleanup on destroy. Defaults to `setTimeout`.
+   */
+  scheduleSeal: (cb: () => void, ms: number) => () => void = (cb, ms) => {
+    const id = setTimeout(cb, ms);
+    return () => clearTimeout(id);
+  };
+
+  /** Public signal: true when a past step exists (drives the `.btn-undo` in Lot D). */
+  readonly canUndo = signal(false);
+  /** Public signal: true when a future step exists (drives the `.btn-redo` in Lot D). */
+  readonly canRedo = signal(false);
+
+  /**
+   * Undoes the last step: pops the previous entry from the pure history and re-applies it through
+   * `applyEntry` (re-render + `setSelection` + `blocksChange.emit`) **without re-pushing** (US5,
+   * anti-loop), then refreshes the button signals. No-op when there is no past step.
+   */
+  undo(): void {
+    const entry = this.history.undo();
+    if (entry) this.applyEntry(entry);
+    this.syncButtons();
+  }
+
+  /**
+   * Redoes the last undone step: pops the next entry from the pure history and re-applies it through
+   * `applyEntry` (re-render + `setSelection` + `blocksChange.emit`) **without re-pushing** (US3/US5),
+   * then refreshes the button signals. No-op when there is no future step (e.g. after a new command
+   * purged it — US4).
+   */
+  redo(): void {
+    const entry = this.history.redo();
+    if (entry) this.applyEntry(entry);
+    this.syncButtons();
+  }
+
+  /**
+   * Re-applies a history entry using the **same cycle as `commit`** — paint, restore the selection,
+   * emit `blocksChange` and refresh the toolbar highlight — but **without** `history.push` (US5): the
+   * ré-application must not create a parasitic step (anti-loop). A `null` selection repaints without
+   * restoring the caret (left to the browser), which is acceptable per the approach.
+   * @param entry The `{model, selection}` step to restore into the editor.
+   */
+  private applyEntry(entry: HistoryEntry): void {
+    this.model.set(entry.model);
+    const editor = this.editorEl();
+    if (!editor) return;
+    this.paint(editor, entry.model);
+    if (entry.selection) {
+      this.selection.setSelection(editor, entry.selection.from, entry.selection.to);
+    }
+    this.blocksChange.emit(entry.model);
+    this.refreshActive();
+  }
+
   /** Text-colour palette exposed to the toolbar swatches. */
   readonly palette = NOTE_COLOR_PALETTE;
 
@@ -146,9 +234,13 @@ export class RichTextEditor {
 
     const onSelectionChange = () => this.refreshActive();
     document.addEventListener('selectionchange', onSelectionChange);
-    inject(DestroyRef).onDestroy(() =>
+    const destroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(() =>
       document.removeEventListener('selectionchange', onSelectionChange),
     );
+    // Undo/Redo (Lot B, DB7): cancel any pending inactivity seal timer so a late expiry never seals
+    // (nor syncs) a destroyed component — covers TB6.3.
+    destroyRef.onDestroy(() => this.cancelSeal?.());
   }
 
   /**
@@ -156,12 +248,59 @@ export class RichTextEditor {
    * block identity) and emits it, **without** re-rendering so the caret does not jump. Structural
    * typing (Enter / Backspace) is handled separately in Phase 4.
    */
-  onInput(): void {
+  onInput(event?: Event): void {
     const editor = this.editorEl();
     if (!editor) return;
+    const previousModel = this.model();
     const model = this.parser.parse(editor.innerHTML);
     this.model.set(model);
     this.blocksChange.emit(model);
+    // Undo/Redo (Lot B): free typing feeds the history WITHOUT repainting (R2: no caret jump).
+    // Lazy seeding (DB4/Q3): the first keystroke seeds the note's starting state so undoing the
+    // whole burst restores the note as opened.
+    if (!this.historySeeded) {
+      this.history.reset({ model: previousModel, selection: null });
+      this.historySeeded = true;
+    }
+    const selection = this.selection.domToModel(editor);
+    const isBoundary = this.isBoundaryData((event as InputEvent | undefined)?.data);
+    this.history.recordTyping({ model, selection }, this.now(), isBoundary);
+    this.armPauseTimer();
+    this.syncButtons();
+  }
+
+  /**
+   * (Re)arms the inactivity seal timer through the injectable `scheduleSeal` seam (Q2): cancels any
+   * pending one, then schedules `history.seal()` + `syncButtons()` at `TYPING_COALESCE_PAUSE_MS`. The
+   * stored cancel neutralises the callback (`active` flag) so a stale expiry after re-arm or destroy
+   * is a no-op (DB7/TB6.3).
+   */
+  private armPauseTimer(): void {
+    this.cancelSeal?.();
+    let active = true;
+    const cancel = this.scheduleSeal(() => {
+      if (!active) return;
+      active = false;
+      this.cancelSeal = null;
+      this.history.seal();
+      this.syncButtons();
+    }, TYPING_COALESCE_PAUSE_MS);
+    this.cancelSeal = () => {
+      active = false;
+      cancel();
+    };
+  }
+
+  /**
+   * Derives the word-boundary flag (C3) from an `InputEvent.data`: the last inserted character being
+   * whitespace or punctuation seals the current typing step. An absent/null `data` (e.g. the bare
+   * `new Event('input')` of T6.1, or a deletion) is treated as a non-boundary keystroke.
+   * @param data The inserted string carried by the input event, if any.
+   */
+  private isBoundaryData(data: string | null | undefined): boolean {
+    if (!data) return false;
+    const last = data[data.length - 1];
+    return /[\s.,;:!?…()[\]{}«»"']/.test(last);
   }
 
   // --- Structural typing (Phase 4) -------------------------------------------
@@ -342,13 +481,45 @@ export class RichTextEditor {
    * @param at The single-block range where the caret/selection should be restored after rendering.
    */
   private commit(newModel: DocModel, at: SelectedRange): void {
+    const previousModel = this.model();
     this.model.set(newModel);
     const editor = this.editorEl();
     if (!editor) return;
     this.paint(editor, newModel);
     this.selection.setSelection(editor, { blockId: at.blockId, offset: at.from }, { blockId: at.blockId, offset: at.to });
+    // Undo/Redo (Lot B): `commit` is the single push point of the history. On the first action the
+    // history is still cold → lazily seed the starting state (previous model) as the initial step
+    // (DB4/Q3) so undoing this action returns the note as opened, then push the resulting state.
+    if (!this.historySeeded) {
+      this.history.reset({ model: previousModel, selection: null });
+      this.historySeeded = true;
+    }
+    this.history.push({ model: newModel, selection: this.toSelection(at) });
     this.blocksChange.emit(newModel);
     this.refreshActive();
+    this.syncButtons();
+  }
+
+  /**
+   * Copies the pure history's `canUndo`/`canRedo` state into the public signals after every history
+   * mutation (commit, and undo/redo/typing in later groups). These signals drive the toolbar buttons
+   * (`[disabled]`) added in Lot D.
+   */
+  private syncButtons(): void {
+    this.canUndo.set(this.history.canUndo());
+    this.canRedo.set(this.history.canRedo());
+  }
+
+  /**
+   * Converts a single-block `SelectedRange` into the `ModelSelection` shape memorised by a history
+   * step (DB6), so `undo`/`redo` can restore the exact caret/selection (Lot B, groups 3–4).
+   * @param range The single-block range committed with the step.
+   */
+  private toSelection(range: SelectedRange): ModelSelection {
+    return {
+      from: { blockId: range.blockId, offset: range.from },
+      to: { blockId: range.blockId, offset: range.to },
+    };
   }
 
   /**

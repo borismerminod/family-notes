@@ -489,4 +489,468 @@ describe('RichTextEditor (Phase 3, modèle blocks)', () => {
       expect(linkOpener.open).not.toHaveBeenCalled();
     });
   });
+
+  // ==========================================================================
+  // Undo/Redo (Lot B — câblage de EditHistory dans RichTextEditor)
+  // Réf : .agent/UNDO_REDO/PLAN_TESTS_RTE_UNDO_REDO.md (validé 2026-09-20), cas TB1–TB6.
+  // TDD boîte noire : on observe les signaux canUndo()/canRedo(), les émissions blocksChange
+  // (last()/emitted.length), le DOM re-rendu et la sélection restaurée (domToModel). L'algèbre de
+  // l'historique est déjà testée au Lot A (edit-history.spec.ts) — ici on teste le BRANCHEMENT.
+  //
+  // Groupe 7 (frontière Lot C : garde d'echo R1 / reset par note) = NON testé ici (cf. plan §4-G7).
+  // ==========================================================================
+  describe('Undo/Redo (Lot B)', () => {
+    /** Horloge injectée partagée (seam Q2/DB3) : chaque test temporel la fixe avant le dispatch. */
+    let clock = 0;
+
+    /**
+     * Simule une frappe dans le bloc `id` : mute le texte du DOM (comme le ferait le navigateur) puis
+     * dispatche un `InputEvent` portant `data` (dernier caractère → dérive `isBoundary`, DB3/Q1), en
+     * ayant d'abord positionné l'horloge injectée à `at`.
+     */
+    function typeKey(id: string, text: string, data: string | null, at: number): void {
+      clock = at;
+      blockEl(id).textContent = text;
+      editorEl().dispatchEvent(new InputEvent('input', { bubbles: true, data }));
+    }
+
+    const selService = () => TestBed.inject(DocumentSelectionService);
+
+    /**
+     * Place une sélection par **offsets modèle** (via `document-selection`), robuste aux nœuds texte
+     * scindés par une marque (`<strong>`…) — contrairement à `selectInBlock` qui vise le 1ᵉʳ nœud
+     * texte. Utilisé pour la 2ᵉ commande d'un enchaînement, quand le DOM est déjà scindé.
+     */
+    function selectModel(id: string, from: number, to: number): void {
+      selService().setSelection(editorEl(), { blockId: id, offset: from }, { blockId: id, offset: to });
+    }
+
+    // --- Groupe 1 — État initial des signaux (US2, US4) ---------------------
+    describe('Groupe 1 — signaux initiaux', () => {
+      it('TB1.1 note chargée, avant toute action : canUndo() = canRedo() = false (rien à annuler ; amorçage paresseux Lot B / eager au (re)chargement Lot C — DB4/DC7)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        expect(component.canUndo()).toBe(false);
+        expect(component.canRedo()).toBe(false);
+      });
+
+      it('TB1.2 document vide : canUndo() = canRedo() = false', () => {
+        setBlocks([]);
+        expect(component.canUndo()).toBe(false);
+        expect(component.canRedo()).toBe(false);
+      });
+    });
+
+    // --- Groupe 2 — Une commande empile un pas & pilote les signaux (US1, US2)
+    describe('Groupe 2 — commande → empilement', () => {
+      it('TB2.1 applyMark(bold) rend canUndo() vrai et laisse canRedo() faux (US1/US2)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        expect(component.canUndo()).toBe(true);
+        expect(component.canRedo()).toBe(false);
+      });
+
+      it('TB2.2 la commande émet toujours le modèle transformé (parité : l\'historique ne casse pas l\'émission)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        expect((last()[0] as TextBlock).marks).toEqual([{ type: 'bold', start: 0, end: 3 }]);
+      });
+
+      it('TB2.3 deux commandes successives : canUndo() reste vrai (deux pas annulables)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        selectModel('b1', 4, 7);
+        component.applyColor('#FF0000');
+        expect(component.canUndo()).toBe(true);
+        expect(component.canRedo()).toBe(false);
+      });
+
+      it('TB2.4 une scission (Enter) rend aussi canUndo() vrai (tous les points d\'entrée commit empilent)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 3, 3);
+        component.onKeydown(keydown('Enter'));
+        expect(component.canUndo()).toBe(true);
+      });
+    });
+
+    // --- Groupe 3 — undo() restaure modèle + sélection + re-render (US1, US5)
+    describe('Groupe 3 — undo()', () => {
+      it('TB3.1 après un gras, undo() ré-émet le modèle d\'avant et retire le <strong> du DOM (US5)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        expect((last()[0] as TextBlock).marks).toEqual([]);
+        expect(editorEl().innerHTML).not.toContain('<strong>');
+      });
+
+      it('TB3.2 après undo() : canUndo() = false (au fond) et canRedo() = true (US1/US4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        expect(component.canUndo()).toBe(false);
+        expect(component.canRedo()).toBe(true);
+      });
+
+      it('TB3.3 undo() restaure la sélection du pas restauré (D3, DB6)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        // Deux commandes aux sélections distinctes : undo doit rétablir CELLE du pas 1 (0..3),
+        // différente de la sélection laissée dans le DOM par le pas 2 (4..7).
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        selectModel('b1', 4, 7);
+        component.applyColor('#FF0000');
+        component.undo();
+        expect(selService().domToModel(editorEl())).toEqual({
+          from: { blockId: 'b1', offset: 0 },
+          to: { blockId: 'b1', offset: 3 },
+        });
+      });
+
+      it('TB3.4 anti-boucle (US5) : undo() puis redo() ramène exactement au modèle post-commande, canRedo() = false', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        component.redo();
+        expect((last()[0] as TextBlock).marks).toEqual([{ type: 'bold', start: 0, end: 3 }]);
+        expect(component.canUndo()).toBe(true);
+        expect(component.canRedo()).toBe(false);
+      });
+
+      it('TB3.5 plusieurs undo remontent jusqu\'à l\'état initial ; un undo de plus est sans effet', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        selectModel('b1', 4, 7);
+        component.applyColor('#FF0000');
+        component.undo();
+        component.undo();
+        expect((last()[0] as TextBlock).marks).toEqual([]);
+        expect(component.canUndo()).toBe(false);
+        const count = emitted.length;
+        component.undo(); // au fond : no-op, aucune émission supplémentaire
+        expect(emitted.length).toBe(count);
+      });
+    });
+
+    // --- Groupe 4 — redo() rétablit (US3, US4) -------------------------------
+    describe('Groupe 4 — redo()', () => {
+      it('TB4.1 commande → undo → redo : la commande est ré-appliquée, canRedo() = false, canUndo() = true (US3)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        component.redo();
+        expect((last()[0] as TextBlock).marks).toEqual([{ type: 'bold', start: 0, end: 3 }]);
+        expect(editorEl().innerHTML).toContain('<strong>');
+        expect(component.canRedo()).toBe(false);
+        expect(component.canUndo()).toBe(true);
+      });
+
+      it('TB4.2 la sélection du pas rétabli est restaurée au redo() (D3)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        selectModel('b1', 4, 7);
+        component.applyColor('#FF0000');
+        component.undo(); // revient au pas 1 (sél 0..3)
+        component.redo(); // rétablit le pas 2 (sél 4..7)
+        expect(selService().domToModel(editorEl())).toEqual({
+          from: { blockId: 'b1', offset: 4 },
+          to: { blockId: 'b1', offset: 7 },
+        });
+      });
+
+      it('TB4.3 purge du futur (US4) : commande A → undo → commande B → canRedo() = false et redo() sans effet', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold'); // commande A
+        component.undo();
+        expect(component.canRedo()).toBe(true);
+        selectModel('b1', 4, 7);
+        component.applyColor('#FF0000'); // commande B → vide le futur
+        expect(component.canRedo()).toBe(false);
+        const count = emitted.length;
+        component.redo(); // sans effet
+        expect(emitted.length).toBe(count);
+      });
+    });
+
+    // --- Groupe 5 — Saisie libre alimentée dans l'historique (US1, D1/D2) ----
+    describe('Groupe 5 — saisie & coalescing (horloge injectée)', () => {
+      it('TB5.1 une salve (< 500 ms, même mot) = un pas : un seul undo retire toute la salve (US1/D1)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'ab', marks: [] }]);
+        component.now = () => clock;
+        typeKey('b1', 'abX', 'X', 1000);
+        typeKey('b1', 'abXY', 'Y', 1200);
+        typeKey('b1', 'abXYZ', 'Z', 1400);
+        expect(component.canUndo()).toBe(true);
+        component.undo();
+        expect((last()[0] as TextBlock).text).toBe('ab'); // toute la salve retirée
+      });
+
+      it('TB5.2 une frontière de mot (séparateur) ouvre un nouveau pas : deux undo séparent « mot2 » (D1/C3)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'A', marks: [] }]);
+        component.now = () => clock;
+        typeKey('b1', 'Amot', 't', 1000); // frappe du mot
+        typeKey('b1', 'Amot ', ' ', 1050); // séparateur → isBoundary=true, scelle
+        typeKey('b1', 'Amot mot2', '2', 1100); // nouveau mot → nouveau pas
+        component.undo();
+        expect((last()[0] as TextBlock).text).toBe('Amot '); // 1er undo : retire « mot2 »
+        component.undo();
+        expect((last()[0] as TextBlock).text).toBe('A'); // 2e undo : retire « mot + espace »
+      });
+
+      it('TB5.3 une pause (timer) scelle la salve : deux undo distincts de part et d\'autre (D2)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'A', marks: [] }]);
+        component.now = () => clock;
+        let sealCb: (() => void) | undefined;
+        component.scheduleSeal = (cb) => {
+          sealCb = cb;
+          return () => {};
+        };
+        typeKey('b1', 'Aa', 'a', 1000);
+        clock = 3000;
+        sealCb?.(); // la pause (>= 500 ms) échoit → le timer scelle
+        typeKey('b1', 'Aab', 'b', 3000);
+        component.undo();
+        expect((last()[0] as TextBlock).text).toBe('Aa'); // la pause a coupé la salve
+        expect(component.canUndo()).toBe(true); // un pas subsiste sous la salve
+      });
+
+      it('TB5.4 une frappe après une commande = pas distinct : le 1er undo retire la frappe, le 2e la commande (D8)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold'); // commande
+        component.now = () => clock;
+        typeKey('b1', 'Bonjour!', '!', 1000); // frappe → nouveau pas
+        component.undo(); // retire la frappe
+        expect((last()[0] as TextBlock).text).toBe('Bonjour');
+        expect(component.canUndo()).toBe(true); // la commande reste annulable
+      });
+
+      it('TB5.5 undo pendant une salve ouverte ramène à l\'état d\'avant la salve (granularité D1)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'ab', marks: [] }]);
+        component.now = () => clock;
+        typeKey('b1', 'abX', 'X', 1000);
+        typeKey('b1', 'abXY', 'Y', 1100); // salve non close (pas de pause ni séparateur)
+        component.undo(); // EditHistory.undo scelle d'abord, puis rembobine
+        expect((last()[0] as TextBlock).text).toBe('ab');
+      });
+
+      it('TB5.6 branchement (Q4) : onInput transmet now() et isBoundary à recordTyping', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'A', marks: [] }]);
+        component.now = () => clock;
+        const spy = vi.spyOn(component['history'], 'recordTyping');
+        typeKey('b1', 'Aa', 'a', 1000); // caractère normal → non-frontière
+        typeKey('b1', 'Aa ', ' ', 1200); // espace → frontière
+        expect(spy).toHaveBeenNthCalledWith(1, expect.anything(), 1000, false);
+        expect(spy).toHaveBeenNthCalledWith(2, expect.anything(), 1200, true);
+      });
+    });
+
+    // --- Groupe 6 — Cohérence du cycle & absence d'effet de bord (US5) -------
+    describe('Groupe 6 — cohérence & nettoyage', () => {
+      it('TB6.1 undo() re-peint comme commit : après undo le DOM égale le rendu du modèle restauré (US5)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        component.undo();
+        expect(editorEl().innerHTML).toBe('<p data-block-id="b1">Bonjour</p>');
+      });
+
+      it('TB6.2 undo()/redo() hors de tout historique utile sont sans effet (robustesse)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        const count = emitted.length;
+        const html = editorEl().innerHTML;
+        expect(() => {
+          component.undo();
+          component.redo();
+        }).not.toThrow();
+        expect(emitted.length).toBe(count);
+        expect(editorEl().innerHTML).toBe(html);
+      });
+
+      it('TB6.3 timer nettoyé à la destruction : une échéance de pause en attente ne rappelle pas seal() (DB7)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'A', marks: [] }]);
+        component.now = () => clock;
+        let sealCb: (() => void) | undefined;
+        let cancelled = false;
+        component.scheduleSeal = (cb) => {
+          sealCb = cb;
+          return () => {
+            cancelled = true;
+          };
+        };
+        const sealSpy = vi.spyOn(component['history'], 'seal');
+        typeKey('b1', 'Aa', 'a', 1000); // arme le timer de pause
+        fixture.destroy();
+        expect(cancelled).toBe(true); // le timer a été annulé au DestroyRef
+        expect(() => sealCb?.()).not.toThrow(); // une échéance obsolète est inoffensive
+        expect(sealSpy).not.toHaveBeenCalled(); // pas de seal() sur un composant détruit
+      });
+    });
+  });
+
+  // ==========================================================================
+  // Undo/Redo — garde anti-echo & reset de l'historique (Lot C)
+  // Réf : .agent/UNDO_REDO/PLAN_TESTS_RTE_RELOAD_GUARD.md (validé 2026-09-20), cas TC1–TC4.
+  // TDD boîte noire : on monte le vrai composant, on crée un historique via les points d'entrée du
+  // Lot B (commande / frappe), puis on RÉINJECTE dans l'input `blocks` soit la MÊME référence que
+  // celle émise (echo de blocksChange), soit une NOUVELLE référence (vrai (re)chargement de note).
+  // On observe les signaux canUndo()/canRedo(), le résultat d'undo()/redo() (last()/emitted.length,
+  // DOM restauré) et un espion léger sur component['history'].reset (Q4) pour pincer la branche de
+  // garde. L'algèbre de l'historique (Lot A) et le câblage commit/onInput (Lot B) ne sont pas re-testés.
+  //
+  // Cœur du lot (R1) : la garde d'identité `incoming === model()` distingue l'echo (ne rien faire)
+  // du (re)chargement (reset + syncButtons). Voir DC1–DC7 + arbitrages Q1–Q5 du plan.
+  // ==========================================================================
+  describe('Undo/Redo — garde anti-echo & reset (Lot C)', () => {
+    /** Horloge injectée partagée (seam Q2/DB3), pour les salves de frappe de TC1.3. */
+    let clock = 0;
+
+    /**
+     * Simule le parent renvoyant l'emit dans `blocks` (echo) : réinjecte la **même référence** que
+     * le dernier `blocksChange.emit` (`last()`), qui — par construction du cycle Lot B — est
+     * exactement `model()`. `detectChanges()` rejoue l'effect de synchro, qui doit alors détecter
+     * `incoming === model()` (echo) et **ne pas** réinitialiser l'historique (Q1 figé). C'est le
+     * mécanisme R1 du plan §2.
+     */
+    function echoBack(): void {
+      fixture.componentRef.setInput('blocks', last());
+      fixture.detectChanges();
+    }
+
+    /**
+     * Simule une frappe dans le bloc `id` (comme le ferait le navigateur) : mute le texte du DOM puis
+     * dispatche un `InputEvent` portant `data` (dernier caractère → dérive `isBoundary`), après avoir
+     * positionné l'horloge injectée à `at`. Aligné sur le helper `typeKey` du Lot B.
+     */
+    function typeKey(id: string, text: string, data: string | null, at: number): void {
+      clock = at;
+      blockEl(id).textContent = text;
+      editorEl().dispatchEvent(new InputEvent('input', { bubbles: true, data }));
+    }
+
+    // --- Groupe 1 — Echo : l'historique SURVIT (R1, US6) — cœur du Lot C -----
+    describe('Groupe 1 — echo : historique préservé', () => {
+      it('TC1.1 echo après une commande n\'efface pas l\'historique : canUndo() reste vrai et undo() ré-émet le modèle d\'avant le gras (DC2/R1)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        expect(component.canUndo()).toBe(true);
+        echoBack(); // réinjecte last() = model() → doit être reconnu comme echo (pas de reset)
+        expect(component.canUndo()).toBe(true);
+        component.undo();
+        expect((last()[0] as TextBlock).marks).toEqual([]);
+      });
+
+      it('TC1.2 echo n\'appelle pas history.reset (branche de garde côté echo, Q4)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        // Espion posé APRÈS le setBlocks initial (l'amorçage eager du (re)chargement est déjà passé) :
+        // ni la commande (DC7 : pas de double seed) ni l'echo ne doivent rappeler reset.
+        const resetSpy = vi.spyOn(component['history'], 'reset');
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold');
+        echoBack();
+        expect(resetSpy).not.toHaveBeenCalled();
+      });
+
+      it('TC1.3 echo après une salve de frappe préserve la salve : canUndo() reste vrai et un undo() retire toute la salve (DC2/R1)', () => {
+        setBlocks([{ id: 'b1', kind: 'text', text: 'ab', marks: [] }]);
+        component.now = () => clock;
+        typeKey('b1', 'abX', 'X', 1000);
+        typeKey('b1', 'abXY', 'Y', 1200);
+        typeKey('b1', 'abXYZ', 'Z', 1400);
+        expect(component.canUndo()).toBe(true);
+        echoBack();
+        expect(component.canUndo()).toBe(true);
+        component.undo();
+        expect((last()[0] as TextBlock).text).toBe('ab'); // toute la salve retirée
+      });
+    });
+
+    // --- Groupe 2 — (Re)chargement réel : l'historique est RÉINITIALISÉ ------
+    describe('Groupe 2 — (re)chargement : historique réinitialisé', () => {
+      it('TC2.1 rechargement (nouvelle référence) vide passé & futur : canUndo() = canRedo() = false (US6, D7, DC3)', () => {
+        setBlocks([{ id: 'a1', kind: 'text', text: 'Note A', marks: [] }]);
+        selectInBlock('a1', 0, 4);
+        component.applyMark('bold');
+        expect(component.canUndo()).toBe(true);
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Note B', marks: [] }]); // autre note
+        expect(component.canUndo()).toBe(false);
+        expect(component.canRedo()).toBe(false);
+      });
+
+      it('TC2.2 après rechargement, undo() est sans effet : l\'ancienne note n\'est plus atteignable (D7, DC3)', () => {
+        setBlocks([{ id: 'a1', kind: 'text', text: 'Note A', marks: [] }]);
+        selectInBlock('a1', 0, 4);
+        component.applyMark('bold');
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Note B', marks: [] }]);
+        const n = emitted.length;
+        component.undo();
+        expect(emitted.length).toBe(n); // aucune émission parasite
+        expect(editorEl().innerHTML).toContain('Note B');
+        expect(editorEl().innerHTML).not.toContain('Note A');
+      });
+
+      it('TC2.3 rechargement après un undo purge aussi le futur : canRedo() redevient faux et redo() sans effet (D7, DC3)', () => {
+        setBlocks([{ id: 'a1', kind: 'text', text: 'Note A', marks: [] }]);
+        selectInBlock('a1', 0, 4);
+        component.applyMark('bold');
+        component.undo();
+        expect(component.canRedo()).toBe(true);
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Note B', marks: [] }]);
+        expect(component.canRedo()).toBe(false);
+        const n = emitted.length;
+        component.redo();
+        expect(emitted.length).toBe(n);
+      });
+
+      it('TC2.4 rechargement appelle history.reset une fois avec le contenu rechargé et selection null (branche de garde côté rechargement, Q4)', () => {
+        setBlocks([{ id: 'a1', kind: 'text', text: 'Note A', marks: [] }]);
+        selectInBlock('a1', 0, 4);
+        component.applyMark('bold'); // historique non vide
+        const resetSpy = vi.spyOn(component['history'], 'reset');
+        const reloaded: NoteBlock[] = [{ id: 'b1', kind: 'text', text: 'Note B', marks: [] }];
+        setBlocks(reloaded); // nouvelle référence → vrai rechargement
+        expect(resetSpy).toHaveBeenCalledTimes(1);
+        expect(resetSpy).toHaveBeenCalledWith({ model: reloaded, selection: null });
+      });
+    });
+
+    // --- Groupe 3 — Seed propre : note rechargée annulable dès sa 1re action -
+    describe('Groupe 3 — seed propre', () => {
+      it('TC3.1 sur la note rechargée, la 1re action est annulable et undo ramène la note telle que rechargée ; canUndo() redevient faux (DC4)', () => {
+        setBlocks([{ id: 'a1', kind: 'text', text: 'Note A', marks: [] }]);
+        selectInBlock('a1', 0, 4);
+        component.applyMark('bold');
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]); // rechargement → reset
+        selectInBlock('b1', 0, 3);
+        component.applyMark('bold'); // 1re action sur la note rechargée
+        expect(component.canUndo()).toBe(true);
+        component.undo();
+        const restored = last()[0] as TextBlock;
+        expect(restored.marks).toEqual([]); // ramène [B] tel que rechargé (sans gras)
+        expect(restored.text).toBe('Bonjour');
+        expect(restored.id).toBe('b1');
+        expect(component.canUndo()).toBe(false); // au pas initial rechargé
+      });
+    });
+
+    // --- Groupe 4 — Premier chargement (initial, Q2 = inclus) ----------------
+    describe('Groupe 4 — premier chargement', () => {
+      it('TC4.1 le tout premier setBlocks amorce sans passé : canUndo() = canRedo() = false avant et après (Q2)', () => {
+        expect(component.canUndo()).toBe(false);
+        expect(component.canRedo()).toBe(false);
+        setBlocks([{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }]);
+        expect(component.canUndo()).toBe(false);
+        expect(component.canRedo()).toBe(false);
+      });
+    });
+  });
 });

@@ -237,7 +237,7 @@
     #editor
     class="editor-content"
     contenteditable="true"
-    (input)="onInput()"
+    (input)="onInput($event)"
     (keydown)="onKeydown($event)"
     (paste)="onPaste($event)"
     (click)="onEditorClick($event)"
