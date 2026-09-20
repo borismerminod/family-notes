@@ -21,6 +21,8 @@ import { DocumentModelService } from '../core/services/document-model';
 import { DocumentRenderService } from '../core/services/document-render';
 import { DocumentParseService } from '../core/services/document-parse';
 import { DocumentSelectionService } from '../core/services/document-selection';
+import { ExternalLinkService } from '../core/services/external-link';
+import { sanitizeHttpUrl } from '../core/services/url-sanitize';
 
 /** Highlight state of the toolbar buttons for the current selection. */
 interface ActiveState {
@@ -81,6 +83,8 @@ export class RichTextEditor {
   private readonly parser = inject(DocumentParseService);
   /** Maps the DOM selection to model positions and restores it after a re-render. */
   private readonly selection = inject(DocumentSelectionService);
+  /** Opens a link's URL outside the app (native browser or web fallback) on tap (§E). */
+  private readonly linkOpener = inject(ExternalLinkService);
 
   /** Incoming blocks: the source of truth pushed by the parent component. */
   readonly blocks = input<NoteBlock[]>([]);
@@ -117,6 +121,12 @@ export class RichTextEditor {
   readonly videoPopupOpen = signal(false);
   /** URL typed into the video popup (two-way bound). */
   readonly videoUrl = signal('');
+  /** Visibility of the link-insertion popup (§C). */
+  readonly linkPopupOpen = signal(false);
+  /** URL typed into the link popup (two-way bound). */
+  readonly linkUrl = signal('');
+  /** Label typed into the link popup — the text carrying the link (two-way bound). */
+  readonly linkLabel = signal('');
 
   /**
    * Wires the reactive plumbing: mirrors incoming blocks into the model (re-rendering only when the
@@ -446,6 +456,80 @@ export class RichTextEditor {
     if (!url) return;
     this.insertBlock({ id: '', kind: 'video', url: this.toEmbedUrl(url) });
     this.closeVideoPopup();
+  }
+
+  // --- Link insertion (§C/§D) ------------------------------------------------
+
+  /** Opens the link-insertion popup (§C). */
+  openLinkPopup(): void {
+    this.linkPopupOpen.set(true);
+  }
+  /** Closes the link-insertion popup and clears both fields (§C, US1). */
+  closeLinkPopup(): void {
+    this.linkPopupOpen.set(false);
+    this.linkUrl.set('');
+    this.linkLabel.set('');
+  }
+
+  /**
+   * Inserts the label carrying a `link` mark at the caret from the popup fields (§D, DL7): sanitises
+   * the URL (no-op when empty/rejected), falls back to the URL as label when empty, replaces any
+   * non-collapsed selection, and places the caret **after** the link (excluded bound → the next
+   * keystroke does not inherit the link). With no caret in a text block (media selected, empty doc,
+   * multi-block), inserts a **new text block** carrying the link at the insertion index. Then closes.
+   */
+  insertLinkFromUrl(): void {
+    const url = sanitizeHttpUrl(this.linkUrl());
+    if (!url) return; // no-op: empty or rejected scheme (US2, DL7)
+    const label = this.linkLabel().trim() || url; // fallback: label = URL (US2)
+
+    const editor = this.editorEl();
+    const range = editor ? this.selectedRange(editor) : null;
+    const model = this.model();
+    const idx = range ? model.findIndex((b) => b.id === range.blockId) : -1;
+
+    if (range && idx >= 0 && isTextBlock(model[idx])) {
+      const block = model[idx];
+      const base =
+        range.from === range.to ? block : this.docModel.deleteRange(block, range.from, range.to);
+      const withText = this.docModel.insertText(base, range.from, label);
+      const linked = this.docModel.setLink(withText, range.from, range.from + label.length, url);
+      const newModel = model.map((b, i) => (i === idx ? linked : b));
+      const end = range.from + label.length; // caret after the link (excluded bound)
+      this.commit(newModel, { blockId: range.blockId, from: end, to: end });
+    } else {
+      // No caret in a text block → new text block carrying the link (consistent with media, DL7).
+      const at = this.insertionIndex(editor, model);
+      const id = crypto.randomUUID();
+      const newBlock = this.docModel.normalize({
+        id,
+        kind: 'text',
+        text: label,
+        marks: [{ type: 'link', start: 0, end: label.length, value: url }],
+      });
+      const newModel = [...model.slice(0, at), newBlock, ...model.slice(at)];
+      this.commit(newModel, { blockId: id, from: label.length, to: label.length });
+    }
+
+    this.closeLinkPopup();
+  }
+
+  /**
+   * Intercepts a tap on a rendered link to open it externally (§E, DL9): when the click lands on
+   * (or inside) an `<a href>`, prevents the anchor's native navigation and delegates to the external
+   * opener — **always**, whether the editor has focus or not (assumed US5 gap). A click outside any
+   * `<a>` falls through to normal editing.
+   * @param event The click event on the editing area.
+   */
+  onEditorClick(event: MouseEvent): void {
+    const anchor = (event.target as HTMLElement | null)?.closest('a');
+    const href = anchor?.getAttribute('href');
+    if (anchor && href) {
+      event.preventDefault();
+      // Fire-and-forget, but adopt the (possibly undefined in tests) result to avoid an
+      // unhandled rejection should the native open reject.
+      Promise.resolve(this.linkOpener.open(href)).catch(() => undefined);
+    }
   }
 
   /**

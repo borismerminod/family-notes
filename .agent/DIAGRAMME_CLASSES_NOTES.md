@@ -190,6 +190,12 @@ SQLite (@capacitor-community/sqlite, base "family_notes")
 > `document.model.ts` (décidé le 2026-09-15, cf. `PLAN_MODELE_DOCUMENT_JSON.md`) — celui que
 > `Note.blocks` utilise désormais. Diagramme **distinct** des sections 1–4 : voir la note de
 > conception §8 sur le rapport avec l'ancien modèle de blocs.
+>
+> **Mis à jour le 2026-09-19** — fonctionnalité **insertion de lien** (`.agent/URL_LINK/`,
+> cf. `REVUE_INSERTION_LIEN.md`) : marque inline `link` (URL portée par `Mark.value`), service
+> d'ouverture externe `ExternalLinkService` et point unique de sanitation `sanitizeHttpUrl`.
+> Ajouts intégrés **dans ce même diagramme** (delta sur les classes existantes, pas de sous-système
+> séparé).
 
 ```mermaid
 classDiagram
@@ -220,6 +226,7 @@ classDiagram
         -DocumentRenderService renderer
         -DocumentParseService parser
         -DocumentSelectionService selection
+        -ExternalLinkService linkOpener
         +InputSignal~NoteBlock[]~ blocks
         +OutputEmitter~NoteBlock[]~ blocksChange
         -Signal~DocModel~ model
@@ -228,6 +235,9 @@ classDiagram
         +Object[] sizes
         +Signal~boolean~ imagePopupOpen
         +Signal~boolean~ videoPopupOpen
+        +Signal~boolean~ linkPopupOpen
+        +Signal~string~ linkUrl
+        +Signal~string~ linkLabel
         +onInput() void
         +onKeydown(event) void
         +onPaste(event) void
@@ -238,6 +248,10 @@ classDiagram
         +insertImageFromUrl() void
         +onImageFile(event) void
         +insertVideoFromUrl() void
+        +openLinkPopup() void
+        +closeLinkPopup() void
+        +insertLinkFromUrl() void
+        +onEditorClick(event) void
     }
 
     %% ---------- Services du modèle document ----------
@@ -249,6 +263,7 @@ classDiagram
         +setColor(block, from, to, color) TextBlock
         +setSize(block, from, to, size) TextBlock
         +clearSize(block, from, to) TextBlock
+        +setLink(block, from, to, url) TextBlock
         +setBlockKind(model, blockId, kind) DocModel
         +splitBlock(model, blockId, offset, makeId?) DocModel
         +mergeBlocks(model, id1, id2) DocModel
@@ -273,6 +288,21 @@ classDiagram
         +domToModel(editor) ModelSelection?
         +modelToDom(editor, point) DomPoint?
         +setSelection(editor, from, to) boolean
+    }
+
+    class ExternalLinkService {
+        <<Injectable root>>
+        +open(url) Promise~void~
+    }
+
+    class sanitizeHttpUrl {
+        <<function — url-sanitize.ts>>
+        +sanitizeHttpUrl(href) string
+    }
+
+    class Browser {
+        <<@capacitor/browser>>
+        +open(options) Promise~void~
     }
 
     %% ---------- Modèle document (document.model.ts) ----------
@@ -318,7 +348,7 @@ classDiagram
     %% ---------- Types énumérés / littéraux ----------
     class MarkType {
         <<type>>
-        bold | italic | underline | color | size
+        bold | italic | underline | color | size | link
     }
 
     class MarkSize {
@@ -359,10 +389,16 @@ classDiagram
     RichTextEditor --> DocumentRenderService : inject()
     RichTextEditor --> DocumentParseService : inject()
     RichTextEditor --> DocumentSelectionService : inject()
+    RichTextEditor --> ExternalLinkService : inject()
+    RichTextEditor ..> sanitizeHttpUrl : insertLinkFromUrl()
     RichTextEditor ..> DocModel : source de vérité
 
     DocumentRenderService --> DocumentModelService : normalize()
     DocumentParseService --> DocumentModelService : normalize()
+    DocumentParseService ..> sanitizeHttpUrl : href de balise A
+    ExternalLinkService ..> sanitizeHttpUrl : défense en profondeur
+    ExternalLinkService ..> Browser : open() natif (mobile)
+    ExternalLinkService ..> window : open() repli web
     DocumentSelectionService ..> ModelSelection : produit
     ModelSelection *-- ModelPoint : from / to
     DocumentSelectionService ..> DomPoint : modelToDom()
@@ -387,6 +423,14 @@ classDiagram
 > Les helpers **privés** de `RichTextEditor` (`commit`, `paint`, `mutateSelectedBlock`,
 > `selectedRange`, `insertBlock`, `refreshActive`…) orchestrent le cycle décrit au §7 et ne sont pas
 > exposés.
+>
+> **Marque `link` (URL_LINK)** : la valeur d'une marque `link` est l'URL `http(s)` (`Mark.value`),
+> comme `color`/`size`. Le rendu/parsing de la marque passe par des helpers **privés** :
+> `DocumentRenderService.tagFor` (cas `link` → `<a href target=_blank rel=noopener noreferrer>`) et
+> `DocumentParseService.marksForElement` (balise `A` → marque `link` sanitée). L'ordre d'imbrication
+> `TYPE_ORDER` (dupliqué **privé** dans model **et** render, à faire évoluer ensemble) place `link`
+> comme balise **la plus externe**. `sanitizeHttpUrl` est le **point unique** de filtrage des schémas
+> (`http`/`https` seuls), appelé au parse, à l'insertion et à l'ouverture.
 
 ## 6. Lecture des relations (note-editor)
 
@@ -400,6 +444,10 @@ classDiagram
 | `DocModel o-- NoteBlock` (agrégation) | Le document est un tableau **plat** de blocs ; les `<ul>`/`<ol>` sont reconstitués au rendu à partir des items consécutifs (D9). |
 | `TextBlock o-- Mark` (agrégation) | Le formatage inline est stocké comme **intervalles plats `[start, end)`** en offsets UTF-16, jamais imbriqués ; le nesting des balises est calculé au rendu (D4/D7). |
 | `Note o-- NoteBlock` | Même agrégation qu'en §1, mais sur le **vrai** modèle `document.model.ts` (cf. note §8). |
+| `RichTextEditor --> ExternalLinkService` | Le tap sur un `<a>` (`onEditorClick`) délègue l'ouverture externe au service ; l'ouverture est **inconditionnelle** (focus ou non — décision `DL`/APPROCHE §0.3). |
+| `RichTextEditor ..> sanitizeHttpUrl` | `insertLinkFromUrl` sanite l'URL saisie (no-op si vide/schéma refusé) puis pose la marque `link` sur le libellé inséré au curseur (repli libellé = URL). |
+| `DocumentParseService ..> sanitizeHttpUrl` | Le parsing d'une balise `<a>` ne garde la marque `link` que si `href` est un `http(s)` valide ; sinon la balise est dégrafée (texte conservé, marque droppée). |
+| `ExternalLinkService ..> Browser / window` | Ouvre l'URL hors app : `Browser.open` sur natif (Capacitor), repli `window.open(url, '_blank', 'noopener')` en web (dev), après re-sanitation (défense en profondeur). |
 
 ## 7. Cycle d'édition (commande → modèle → écran)
 

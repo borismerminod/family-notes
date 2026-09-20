@@ -318,4 +318,66 @@ describe('DocumentRenderService (rendu modèle → HTML, pur)', () => {
       expect(service.render([mkText('text', 'abc', [], 'b1')])).toBe('<p>abc</p>');
     });
   });
+
+  // ==========================================================================
+  // Groupe 9 — lien : rendu `<a href …>` — §B1 du PLAN_TESTS_INSERTION_LIEN.md
+  // ==========================================================================
+  // DL4 — `link` → `<a href="URL" target="_blank" rel="noopener noreferrer">…</a>`, URL échappée.
+  // DL2 — `link` est la marque la plus EXTERNE (ordre `<a><strong>…</strong></a>`).
+  describe('rendu lien', () => {
+    // --- Groupe B1.1 — balise <a> -------------------------------------------
+    it('TB1.1 rend un run link en <a> (target/rel) (US4)', () => {
+      const block = mkText('text', 'clic', [mark('link', 0, 4, 'https://ex.com')]);
+      expect(service.render([block])).toBe(
+        '<p><a href="https://ex.com" target="_blank" rel="noopener noreferrer">clic</a></p>',
+      );
+    });
+
+    it('TB1.2 échappe l\'URL dans l\'attribut href', () => {
+      const block = mkText('text', 'x', [mark('link', 0, 1, 'https://a.com/?x=1&y=2')]);
+      expect(service.render([block])).toContain('href="https://a.com/?x=1&amp;y=2"');
+    });
+
+    it('TB1.3 échappe le texte du libellé (& < >) à l\'intérieur du <a>', () => {
+      const block = mkText('text', 'a<b', [mark('link', 0, 3, 'https://ex.com')]);
+      expect(service.render([block])).toBe(
+        '<p><a href="https://ex.com" target="_blank" rel="noopener noreferrer">a&lt;b</a></p>',
+      );
+    });
+
+    // --- Groupe B1.2 — cumul & ordre (DL2) ----------------------------------
+    it('TB1.4 link + bold → <a><strong>…</strong></a> (link externe)', () => {
+      const block = mkText('text', 'x', [mark('link', 0, 1, 'https://ex.com'), mark('bold', 0, 1)]);
+      expect(service.render([block])).toBe(
+        '<p><a href="https://ex.com" target="_blank" rel="noopener noreferrer"><strong>x</strong></a></p>',
+      );
+    });
+
+    it('TB1.5 link + les 4 autres marques → ordre complet (link externe, puis D7)', () => {
+      const block = mkText('text', 'x', [
+        mark('link', 0, 1, 'https://ex.com'),
+        mark('bold', 0, 1),
+        mark('italic', 0, 1),
+        mark('underline', 0, 1),
+        mark('color', 0, 1, '#123456'),
+        mark('size', 0, 1, 'small'),
+      ]);
+      expect(service.render([block])).toBe(
+        '<p><a href="https://ex.com" target="_blank" rel="noopener noreferrer">' +
+          '<strong><em><u><span style="color:#123456"><span style="font-size:small">x</span></span></u></em></strong>' +
+          '</a></p>',
+      );
+    });
+
+    it('TB1.6 deux liens d\'URL différentes contigus → deux <a> distincts (pas de fusion)', () => {
+      const block = mkText('text', 'abcd', [
+        mark('link', 0, 2, 'https://a.com'),
+        mark('link', 2, 4, 'https://b.com'),
+      ]);
+      expect(service.render([block])).toBe(
+        '<p><a href="https://a.com" target="_blank" rel="noopener noreferrer">ab</a>' +
+          '<a href="https://b.com" target="_blank" rel="noopener noreferrer">cd</a></p>',
+      );
+    });
+  });
 });

@@ -1,11 +1,12 @@
 <!--
-  Éditeur de texte riche : barre d'outils + zone contenteditable (même composant, D2).
-  Construit en TDD groupe par groupe. Réalisé : G1 (rendu).
-  Chaque bouton annule le mousedown (D4) pour ne pas voler le focus du contenteditable.
+  Rich-text editor: toolbar + contenteditable area (same component, D2).
+  Built with TDD, group by group. Delivered: marks / size / lists / color, image + video + link
+  insertion, and external open on link tap (§C–§E).
+  Every button cancels mousedown (D4) so it does not steal the contenteditable's focus.
 -->
 <div class="rich-text-editor">
   <div class="format-toolbar" role="toolbar" aria-label="Mise en forme">
-    <!-- Marques sémantiques -->
+    <!-- Semantic marks -->
     <div class="toolbar-group">
       <button
         type="button"
@@ -42,7 +43,7 @@
       </button>
     </div>
 
-    <!-- Taille -->
+    <!-- Size -->
     <div class="toolbar-group">
       @for (s of sizes; track s.size) {
         <button
@@ -59,7 +60,7 @@
       }
     </div>
 
-    <!-- Listes -->
+    <!-- Lists -->
     <div class="toolbar-group">
       <button
         type="button"
@@ -85,7 +86,7 @@
       </button>
     </div>
 
-    <!-- Couleur -->
+    <!-- Color -->
     <div class="toolbar-group colors">
       @for (color of palette; track color) {
         <button
@@ -102,7 +103,7 @@
       }
     </div>
 
-    <!-- Médias -->
+    <!-- Media -->
     <div class="toolbar-group">
       <button
         type="button"
@@ -124,10 +125,20 @@
       >
         🎬
       </button>
+      <button
+        type="button"
+        class="btn-link"
+        (mousedown)="$event.preventDefault()"
+        (click)="openLinkPopup()"
+        title="Insérer un lien"
+        aria-label="Insérer un lien"
+      >
+        🔗
+      </button>
     </div>
   </div>
 
-  <!-- Popup d'insertion d'image (rendu conditionnel) -->
+  <!-- Image-insertion popup (conditional rendering) -->
   @if (imagePopupOpen()) {
     <div class="media-popup image-popup" role="dialog" aria-label="Insérer une image">
       <div class="popup-row">
@@ -162,7 +173,7 @@
     </div>
   }
 
-  <!-- Popup d'insertion de vidéo (lien seul) -->
+  <!-- Video-insertion popup (URL only) -->
   @if (videoPopupOpen()) {
     <div class="media-popup video-popup" role="dialog" aria-label="Insérer une vidéo">
       <div class="popup-row">
@@ -188,7 +199,40 @@
     </div>
   }
 
-  <!-- Zone d'édition : le contenu entrant y est injecté par effet (D5), pas via [innerHTML]. -->
+  <!-- Link-insertion popup (URL + label), modeled on the video bar with one extra field -->
+  @if (linkPopupOpen()) {
+    <div class="media-popup link-popup" role="dialog" aria-label="Insérer un lien">
+      <div class="popup-row">
+        <input
+          type="text"
+          class="link-url-input"
+          placeholder="Lien (https://…)"
+          [value]="linkUrl()"
+          (input)="linkUrl.set($any($event.target).value)"
+        />
+        <input
+          type="text"
+          class="link-label-input"
+          placeholder="Texte à afficher"
+          [value]="linkLabel()"
+          (input)="linkLabel.set($any($event.target).value)"
+        />
+        <button type="button" class="btn-link-insert" (click)="insertLinkFromUrl()">
+          Insérer le lien
+        </button>
+      </div>
+      <button
+        type="button"
+        class="btn-close-popup"
+        (click)="closeLinkPopup()"
+        aria-label="Fermer"
+      >
+        ✕
+      </button>
+    </div>
+  }
+
+  <!-- Editing area: incoming content is injected here by an effect (D5), not via [innerHTML]. -->
   <div
     #editor
     class="editor-content"
@@ -196,5 +240,6 @@
     (input)="onInput()"
     (keydown)="onKeydown($event)"
     (paste)="onPaste($event)"
+    (click)="onEditorClick($event)"
   ></div>
 </div>

@@ -1,7 +1,10 @@
+import { vi } from 'vitest';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { RichTextEditor } from './rich-text-editor';
 import { NoteBlock, TextBlock } from '../core/models/document.model';
+import { DocumentSelectionService } from '../core/services/document-selection';
+import { ExternalLinkService } from '../core/services/external-link';
 
 /**
  * Tests du `RichTextEditor` (Phase 3) — éditeur au-dessus du modèle de document JSON.
@@ -17,9 +20,15 @@ describe('RichTextEditor (Phase 3, modèle blocks)', () => {
   let component: RichTextEditor;
   let host: HTMLElement;
   let emitted: NoteBlock[][];
+  /** Doublure espionnée de l'ouverture externe (§E2 : on vérifie l'appel sans ouvrir de page). */
+  let linkOpener: { open: ReturnType<typeof vi.fn> };
 
   beforeEach(async () => {
-    await TestBed.configureTestingModule({ imports: [RichTextEditor] }).compileComponents();
+    linkOpener = { open: vi.fn() };
+    await TestBed.configureTestingModule({
+      imports: [RichTextEditor],
+      providers: [{ provide: ExternalLinkService, useValue: linkOpener }],
+    }).compileComponents();
     fixture = TestBed.createComponent(RichTextEditor);
     component = fixture.componentInstance;
     host = fixture.nativeElement as HTMLElement;
@@ -31,6 +40,7 @@ describe('RichTextEditor (Phase 3, modèle blocks)', () => {
   afterEach(() => {
     window.getSelection()?.removeAllRanges();
     host.remove();
+    vi.restoreAllMocks();
   });
 
   function setBlocks(blocks: NoteBlock[]): void {
@@ -265,6 +275,218 @@ describe('RichTextEditor (Phase 3, modèle blocks)', () => {
       selectInBlock('b1', 5, 5);
       component.onPaste(paste({}));
       expect(emitted).toEqual([]);
+    });
+  });
+
+  // ==========================================================================
+  // Groupe 10 — Insertion de lien : bouton + barre 2 champs — §C+D du
+  // PLAN_TESTS_INSERTION_LIEN.md (US1, US2, US3)
+  // ==========================================================================
+  // Contrat DOM : .btn-link, .media-popup.link-popup, .link-url-input, .link-label-input,
+  // .btn-link-insert, .btn-close-popup (réutilisé). DL7 : sanitizeHttpUrl + trim + repli libellé=URL.
+  describe('Insertion de lien — barre & bouton', () => {
+    const linkPopup = () => host.querySelector<HTMLElement>('.media-popup.link-popup');
+
+    // --- Groupe CD1 — ouvrir/fermer la barre (US1) --------------------------
+    it('TCD1.1 un bouton .btn-link est présent avec title + aria-label explicites', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+      const btn = host.querySelector<HTMLButtonElement>('.btn-link');
+      expect(btn).toBeTruthy();
+      expect(btn!.getAttribute('title')).toBe('Insérer un lien');
+      expect(btn!.getAttribute('aria-label')).toBe('Insérer un lien');
+    });
+
+    it('TCD1.2 cliquer .btn-link ouvre la barre à deux champs + bouton insérer + croix', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+      host.querySelector<HTMLButtonElement>('.btn-link')!.click();
+      fixture.detectChanges();
+      const popup = linkPopup();
+      expect(popup).toBeTruthy();
+      expect(popup!.querySelector('.link-url-input')).toBeTruthy();
+      expect(popup!.querySelector('.link-label-input')).toBeTruthy();
+      expect(popup!.querySelector('.btn-link-insert')).toBeTruthy();
+      expect(popup!.querySelector('.btn-close-popup')).toBeTruthy();
+    });
+
+    it('TCD1.3 la croix ferme sans rien insérer et réinitialise les deux champs (US1)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'x', marks: [] }]);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      fixture.detectChanges();
+      linkPopup()!.querySelector<HTMLButtonElement>('.btn-close-popup')!.click();
+      fixture.detectChanges();
+      expect(linkPopup()).toBeFalsy();
+      expect(component.linkUrl()).toBe('');
+      expect(component.linkLabel()).toBe('');
+      expect(emitted).toEqual([]);
+    });
+
+    // --- Groupe CD2 — saisie & no-op (US2) ----------------------------------
+    it('TCD2.1 « Insérer » avec URL vide → no-op (modèle inchangé)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      expect(emitted).toEqual([]);
+    });
+
+    it('TCD2.2 « Insérer » avec un schéma refusé (javascript:) → no-op (sanitation, DL7)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('javascript:alert(1)');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      expect(emitted).toEqual([]);
+    });
+
+    it('TCD2.3 libellé vide + URL valide → le texte affiché retombe sur l\'URL (US2)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('');
+      component.insertLinkFromUrl();
+      const block = last()[0] as TextBlock;
+      expect(block.text).toBe('abchttps://ex.com');
+      expect(block.marks).toEqual([
+        { type: 'link', start: 3, end: 3 + 'https://ex.com'.length, value: 'https://ex.com' },
+      ]);
+    });
+
+    it('TCD2.4 URL et libellé entourés d\'espaces → trim avant insertion (US2)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('  https://ex.com  ');
+      component.linkLabel.set('  clic  ');
+      component.insertLinkFromUrl();
+      const block = last()[0] as TextBlock;
+      expect(block.text).toBe('abcclic');
+      expect(block.marks).toEqual([{ type: 'link', start: 3, end: 7, value: 'https://ex.com' }]);
+    });
+
+    // --- Groupe CD3 — insertion au curseur (US3) ----------------------------
+    it('TCD3.1 curseur dans un bloc texte → libellé inséré au curseur, porteur de la marque link (US3)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      const block = last()[0] as TextBlock;
+      expect(block.text).toBe('abcclic');
+      expect(block.marks).toEqual([{ type: 'link', start: 3, end: 7, value: 'https://ex.com' }]);
+    });
+
+    it('TCD3.2 le texte inséré est rendu comme un lien (a[href] dans le bloc) (US3/US4)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      fixture.detectChanges();
+      const a = blockEl('b1').querySelector<HTMLAnchorElement>('a[href]');
+      expect(a).toBeTruthy();
+      expect(a!.getAttribute('href')).toBe('https://ex.com');
+      expect(a!.textContent).toContain('clic');
+    });
+
+    it('TCD3.3 après insertion, la barre se ferme et ses champs sont réinitialisés (US3)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      fixture.detectChanges();
+      expect(linkPopup()).toBeFalsy();
+      expect(component.linkUrl()).toBe('');
+      expect(component.linkLabel()).toBe('');
+    });
+
+    it('TCD3.4 le curseur se replace APRÈS le libellé inséré (borne exclue → pas d\'héritage) (US3)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      selectInBlock('b1', 3, 3);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      fixture.detectChanges();
+      // Curseur collapsé, remis à la fin du libellé (offset 7 = 'abc' + 'clic', borne exclue).
+      const selService = TestBed.inject(DocumentSelectionService);
+      const sel = selService.domToModel(editorEl());
+      expect(sel).toEqual({
+        from: { blockId: 'b1', offset: 7 },
+        to: { blockId: 'b1', offset: 7 },
+      });
+    });
+
+    it('TCD3.5 une sélection non collapsée est remplacée par le libellé lié (US3)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abcXXdef', marks: [] }]);
+      selectInBlock('b1', 3, 5); // sélectionne 'XX'
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      const block = last()[0] as TextBlock;
+      expect(block.text).toBe('abcclicdef');
+      expect(block.marks).toEqual([{ type: 'link', start: 3, end: 7, value: 'https://ex.com' }]);
+    });
+
+    it('TCD3.6 aucun curseur dans un bloc texte (doc vide) → nouveau bloc texte lié (US3, DL7)', () => {
+      setBlocks([]);
+      component.openLinkPopup();
+      component.linkUrl.set('https://ex.com');
+      component.linkLabel.set('clic');
+      component.insertLinkFromUrl();
+      const linked = last().find((b) => b.kind === 'text') as TextBlock;
+      expect(linked).toBeTruthy();
+      expect(linked.text).toBe('clic');
+      expect(linked.marks).toEqual([{ type: 'link', start: 0, end: 4, value: 'https://ex.com' }]);
+    });
+  });
+
+  // ==========================================================================
+  // Groupe 11 — Ouverture externe au tap — §E2 du PLAN_TESTS_INSERTION_LIEN.md (US5)
+  // ==========================================================================
+  // DL9 — onEditorClick : clic dans un <a href> → preventDefault + linkOpener.open(href) ;
+  //       ouvre TOUJOURS (focus ou non) ; clic hors <a> → aucune ouverture.
+  describe('Ouverture d\'un lien au tap', () => {
+    it('TE2.1 un clic sur a[href] appelle linkOpener.open(href) et preventDefault (US5)', () => {
+      setBlocks([
+        { id: 'b1', kind: 'text', text: 'clic', marks: [{ type: 'link', start: 0, end: 4, value: 'https://ex.com' }] },
+      ]);
+      const a = editorEl().querySelector<HTMLAnchorElement>('a[href]')!;
+      const evt = new MouseEvent('click', { bubbles: true, cancelable: true });
+      a.dispatchEvent(evt);
+      expect(linkOpener.open).toHaveBeenCalledWith('https://ex.com');
+      expect(evt.defaultPrevented).toBe(true);
+    });
+
+    it('TE2.2 l\'ouverture se produit que l\'éditeur ait le focus ou non (écart US5 assumé, DL9)', () => {
+      setBlocks([
+        { id: 'b1', kind: 'text', text: 'clic', marks: [{ type: 'link', start: 0, end: 4, value: 'https://ex.com' }] },
+      ]);
+      const a = editorEl().querySelector<HTMLAnchorElement>('a[href]')!;
+
+      editorEl().blur();
+      a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(linkOpener.open).toHaveBeenCalledTimes(1);
+
+      editorEl().focus();
+      a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(linkOpener.open).toHaveBeenCalledTimes(2);
+    });
+
+    it('TE2.3 un clic hors d\'un <a> (texte normal) → linkOpener.open n\'est pas appelé (DL9)', () => {
+      setBlocks([{ id: 'b1', kind: 'text', text: 'abc', marks: [] }]);
+      blockEl('b1').dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      expect(linkOpener.open).not.toHaveBeenCalled();
     });
   });
 });

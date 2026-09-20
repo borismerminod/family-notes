@@ -303,4 +303,91 @@ describe('DocumentParseService (parsing HTML → modèle, pur)', () => {
       expect((block as TextBlock).marks).toEqual([mark('bold', 3, 8), mark('bold', 9, 13), mark('italic', 9, 13)]);
     });
   });
+
+  // ==========================================================================
+  // Groupe 8 — lien : parsing `<a>` + sanitation — §B2 du PLAN_TESTS_INSERTION_LIEN.md
+  // ==========================================================================
+  // DL5 — href lu via getAttribute('href') → sanitizeHttpUrl ; URL valide → marque
+  //       {type:'link', value:url} sur [start,end) ; sinon marque droppée, texte conservé.
+  // DL6 — sanitizeHttpUrl n'accepte que http:/https: ; javascript:/data:/vide/relatif → ''.
+  describe('parsing lien <a>', () => {
+    // --- Groupe B2.1 — <a> valide -------------------------------------------
+    it('TB2.1 <a href="https://ex.com">clic</a> → texte + marque link [0,4)', () => {
+      const [block] = service.parse('<a href="https://ex.com">clic</a>', counter());
+      expect(block).toEqual(mkText('text', 'clic', [mark('link', 0, 4, 'https://ex.com')], 'id-1'));
+    });
+
+    it('TB2.2 accepte le schéma http', () => {
+      const [block] = service.parse('<a href="http://ex.com">x</a>', counter());
+      expect((block as TextBlock).marks).toEqual([mark('link', 0, 1, 'http://ex.com')]);
+    });
+
+    it('TB2.3 <a> imbriqué avec <strong> → texte portant les deux marques link + bold', () => {
+      const [block] = service.parse('<a href="https://ex.com"><strong>x</strong></a>', counter());
+      // Canonique : `link` externe (rang le plus bas) triée avant bold.
+      expect((block as TextBlock).marks).toEqual([
+        mark('link', 0, 1, 'https://ex.com'),
+        mark('bold', 0, 1),
+      ]);
+    });
+
+    // --- Groupe B2.2 — sanitation (DL6, US2/US6) -----------------------------
+    it('TB2.4 <a href="javascript:…"> → marque droppée, texte conservé', () => {
+      expect(service.parse('<a href="javascript:alert(1)">x</a>', counter())).toEqual([
+        mkText('text', 'x', [], 'id-1'),
+      ]);
+    });
+
+    it('TB2.5 <a href="data:…"> → marque droppée, texte conservé', () => {
+      expect(service.parse('<a href="data:text/html,foo">x</a>', counter())).toEqual([
+        mkText('text', 'x', [], 'id-1'),
+      ]);
+    });
+
+    it('TB2.6 <a> sans href (ou href="") → marque droppée, texte conservé', () => {
+      expect(service.parse('<a>x</a>', counter())).toEqual([mkText('text', 'x', [], 'id-1')]);
+      expect(service.parse('<a href="">y</a>', counter())).toEqual([mkText('text', 'y', [], 'id-1')]);
+    });
+
+    it('TB2.7 <a href="/page/relative"> (relatif non résolu) → marque droppée, texte conservé', () => {
+      expect(service.parse('<a href="/page/relative">x</a>', counter())).toEqual([
+        mkText('text', 'x', [], 'id-1'),
+      ]);
+    });
+
+    // TB2.8 — `sanitizeHttpUrl` est privé (non exporté) → couvert à travers le parse
+    // (TB2.2 http, TB2.1 https acceptés ; TB2.4→2.7 schémas/relatif/vide rejetés). Voir plan §7.3.
+  });
+
+  // ==========================================================================
+  // Groupe 9 — round-trip parse(render(m)) avec lien — §B3 du PLAN_TESTS_INSERTION_LIEN.md
+  // ==========================================================================
+  describe('round-trip lien parse(render(m))', () => {
+    const render = new DocumentRenderService(new DocumentModelService());
+
+    it('TB3.1 round-trip d\'un lien seul (US4 persistance/affichage)', () => {
+      const m: DocModel = [mkText('text', 'clic', [mark('link', 0, 4, 'https://ex.com')], 'b1')];
+      expect(stripIds(service.parse(render.render(m)))).toEqual(stripIds(m));
+    });
+
+    it('TB3.2 round-trip link cumulé à bold + color (verrouille la concordance des deux TYPE_ORDER)', () => {
+      const m: DocModel = [
+        mkText(
+          'text',
+          'abcd',
+          // Ordre canonique : link (externe) ▸ bold ▸ color.
+          [mark('link', 0, 4, 'https://ex.com'), mark('bold', 0, 2), mark('color', 2, 4, '#00ff00')],
+          'b1',
+        ),
+      ];
+      expect(stripIds(service.parse(render.render(m)))).toEqual(stripIds(m));
+    });
+
+    it('TB3.3 l\'URL relue via getAttribute + sanitizeHttpUrl renormalise à l\'identique', () => {
+      const m: DocModel = [
+        mkText('text', 'x', [mark('link', 0, 1, 'https://ex.com/path?a=1&b=2')], 'b1'),
+      ];
+      expect(stripIds(service.parse(render.render(m)))).toEqual(stripIds(m));
+    });
+  });
 });

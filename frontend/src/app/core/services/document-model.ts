@@ -99,6 +99,19 @@ export class DocumentModelService {
   }
 
   /**
+   * Sets or replaces a link over the selection; re-applying the SAME url on a fully covered range
+   * removes it (toggle behaviour). Mirror of `setColor` (DL3): the url is carried by `Mark.value`.
+   * @param block The block to edit.
+   * @param from Selection start (UTF-16 offset).
+   * @param to Selection end (UTF-16 offset).
+   * @param url The target url (already sanitized upstream — `http(s)`).
+   * @returns A new normalized block; the input is never mutated.
+   */
+  setLink(block: TextBlock, from: number, to: number, url: string): TextBlock {
+    return this.setValueMark(block, from, to, 'link', url);
+  }
+
+  /**
    * Removes every `size` mark over the selection (back to the "normal" size).
    * @param block The block to edit.
    * @param from Selection start (UTF-16 offset).
@@ -235,13 +248,14 @@ export class DocumentModelService {
 
   // --- Private helpers (interval algebra, pure) -------------------------------
 
-  /** Canonical nesting order (D7), used to sort marks by `type`. */
+  /** Canonical nesting order (D7 + DL2), used to sort marks by `type`. `link` is the OUTERMOST. */
   private static readonly TYPE_ORDER: Record<MarkType, number> = {
-    bold: 0,
-    italic: 1,
-    underline: 2,
-    color: 3,
-    size: 4,
+    link: 0,
+    bold: 1,
+    italic: 2,
+    underline: 3,
+    color: 4,
+    size: 5,
   };
 
   /**
@@ -259,7 +273,7 @@ export class DocumentModelService {
     block: TextBlock,
     from: number,
     to: number,
-    type: 'color' | 'size',
+    type: 'color' | 'size' | 'link',
     value: string,
   ): TextBlock {
     return this.editInline(block, from, to, (lo, hi) =>
