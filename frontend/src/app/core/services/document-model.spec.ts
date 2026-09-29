@@ -469,4 +469,89 @@ describe('DocumentModelService (modèle de document, pur)', () => {
       expect(service.splitBlock(model, 'img1', 0, () => 'id-1')).toEqual(model);
     });
   });
+
+  // ==========================================================================
+  // Groupe 11 — lien (marque valuée `link`) — §A du PLAN_TESTS_INSERTION_LIEN.md
+  // ==========================================================================
+  // DL1 — `link` est une marque valuée (URL portée par `Mark.value`), jumelle de color/size.
+  // DL2 — `link` est la marque la plus EXTERNE de TYPE_ORDER (rang le plus bas) → triée en 1er.
+  // DL3 — `setLink` miroir de `setColor` (setValueMark) : remplace tout `link` sur la plage puis
+  //       pose le nouveau ; ré-appliquer la MÊME URL sur une plage couverte la retire (toggle).
+  describe('setLink (marque lien valuée)', () => {
+    // --- Groupe A1 — pose d'un lien ------------------------------------------
+    it('TA1.1 pose une marque link de valeur url sur exactement [from, to) (US3)', () => {
+      const block = mkText('text', 'Voir le site');
+      expect(service.setLink(block, 0, 4, 'https://ex.com').marks).toEqual([
+        mark('link', 0, 4, 'https://ex.com'),
+      ]);
+    });
+
+    it('TA1.2 le lien cohabite avec une marque existante (bold) sans l\'écraser (US4 cumul)', () => {
+      const block = mkText('text', 'abcd', [mark('bold', 0, 4)]);
+      // Tri canonique (type, value, start) : `link` externe (rang le plus bas) → triée avant bold.
+      expect(service.setLink(block, 0, 4, 'https://ex.com').marks).toEqual([
+        mark('link', 0, 4, 'https://ex.com'),
+        mark('bold', 0, 4),
+      ]);
+    });
+
+    it('TA1.3 setLink est pur : ne mute pas l\'entrée (offsets UTF-16)', () => {
+      const block = mkText('text', 'abcd', [mark('bold', 0, 4)]);
+      const snapshot = structuredClone(block);
+      service.setLink(block, 0, 4, 'https://ex.com');
+      expect(block).toEqual(snapshot);
+    });
+
+    // --- Groupe A2 — remplacement & toggle (DL3) -----------------------------
+    it('TA2.1 re-setLink avec une URL différente REMPLACE l\'URL (une seule marque link)', () => {
+      const block = mkText('text', 'abcd', [mark('link', 0, 4, 'https://a.com')]);
+      expect(service.setLink(block, 0, 4, 'https://b.com').marks).toEqual([
+        mark('link', 0, 4, 'https://b.com'),
+      ]);
+    });
+
+    it('TA2.2 re-setLink avec la MÊME URL sur une plage couverte RETIRE le lien (toggle off)', () => {
+      const block = mkText('text', 'abcd', [mark('link', 0, 4, 'https://a.com')]);
+      expect(service.setLink(block, 0, 4, 'https://a.com').marks).toEqual([]);
+    });
+
+    it('TA2.3 deux liens d\'URL différentes ne fusionnent pas ; deux de même URL qui se touchent oui', () => {
+      const differentes = mkText('text', 'abcdefgh', [
+        mark('link', 0, 4, 'https://a.com'),
+        mark('link', 4, 8, 'https://b.com'),
+      ]);
+      // clé `type:value` distincte → aucune fusion ; tri par value : 'https://a.com' < 'https://b.com'.
+      expect(service.normalize(differentes).marks).toEqual([
+        mark('link', 0, 4, 'https://a.com'),
+        mark('link', 4, 8, 'https://b.com'),
+      ]);
+
+      const memeUrl = mkText('text', 'abcdefgh', [
+        mark('link', 0, 4, 'https://a.com'),
+        mark('link', 4, 8, 'https://a.com'),
+      ]);
+      expect(service.normalize(memeUrl).marks).toEqual([mark('link', 0, 8, 'https://a.com')]);
+    });
+
+    // --- Groupe A3 — plage limite -------------------------------------------
+    it('TA3.1 plage collapsée (from === to) → bloc normalisé inchangé (aucune marque link)', () => {
+      const block = mkText('text', 'abcd');
+      expect(service.setLink(block, 2, 2, 'https://a.com').marks).toEqual([]);
+    });
+
+    // --- Groupe A4 — retrait par effacement (US6, delta link) ----------------
+    it('TA4.1 deleteRange sur tout le texte d\'un lien supprime la marque link (US6)', () => {
+      const block = mkText('text', 'abcd', [mark('link', 0, 4, 'https://a.com')]);
+      const out = service.deleteRange(block, 0, 4);
+      expect(out.text).toBe('');
+      expect(out.marks).toEqual([]);
+    });
+
+    it('TA4.2 deleteRange sur une partie du lien conserve la marque sur le reste (offsets rebasés) (US6)', () => {
+      const block = mkText('text', 'abcdef', [mark('link', 0, 6, 'https://a.com')]);
+      const out = service.deleteRange(block, 4, 6); // efface 'ef'
+      expect(out.text).toBe('abcd');
+      expect(out.marks).toEqual([mark('link', 0, 4, 'https://a.com')]);
+    });
+  });
 });

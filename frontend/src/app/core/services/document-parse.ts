@@ -1,6 +1,7 @@
 import { Injectable } from '@angular/core';
 import { DocModel, Mark, MarkType, NoteBlock, TextBlockKind } from '../models/document.model';
 import { DocumentModelService } from './document-model';
+import { sanitizeHttpUrl } from './url-sanitize';
 
 /** Scratch buffer accumulating a text block's plain text and marks during the walk. */
 interface InlineAcc {
@@ -229,6 +230,11 @@ export class DocumentParseService {
   private marksForElement(el: HTMLElement): MarkDesc[] {
     const known = DocumentParseService.MARK_TAG[el.tagName];
     if (known) return [known];
+    if (el.tagName === 'A') {
+      // DL5: href sanitized (DL6) → link mark; otherwise mark dropped, text kept (<a> unwrapped).
+      const url = sanitizeHttpUrl(el.getAttribute('href'));
+      return url ? [{ type: 'link', value: url }] : [];
+    }
     if (el.tagName === 'SPAN') {
       const descs: MarkDesc[] = [];
       const color = this.normalizeColor(el.style.getPropertyValue('color'));

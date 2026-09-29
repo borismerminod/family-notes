@@ -7,6 +7,7 @@ import {
   input,
   output,
   signal,
+  untracked,
   viewChild,
 } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -20,7 +21,10 @@ import {
 import { DocumentModelService } from '../core/services/document-model';
 import { DocumentRenderService } from '../core/services/document-render';
 import { DocumentParseService } from '../core/services/document-parse';
-import { DocumentSelectionService } from '../core/services/document-selection';
+import { DocumentSelectionService, ModelSelection } from '../core/services/document-selection';
+import { EditHistory, HistoryEntry, TYPING_COALESCE_PAUSE_MS } from '../core/services/edit-history';
+import { ExternalLinkService } from '../core/services/external-link';
+import { sanitizeHttpUrl } from '../core/services/url-sanitize';
 
 /** Highlight state of the toolbar buttons for the current selection. */
 interface ActiveState {
@@ -81,6 +85,8 @@ export class RichTextEditor {
   private readonly parser = inject(DocumentParseService);
   /** Maps the DOM selection to model positions and restores it after a re-render. */
   private readonly selection = inject(DocumentSelectionService);
+  /** Opens a link's URL outside the app (native browser or web fallback) on tap (§E). */
+  private readonly linkOpener = inject(ExternalLinkService);
 
   /** Incoming blocks: the source of truth pushed by the parent component. */
   readonly blocks = input<NoteBlock[]>([]);
@@ -92,6 +98,93 @@ export class RichTextEditor {
 
   /** Current model: the internal source of truth mirrored into the DOM. */
   private readonly model = signal<DocModel>([]);
+
+  // --- Undo/Redo wiring (Lots B/C) -------------------------------------------
+  // The undo/redo logic is fully implemented below: `commit` -> `history.push`, `onInput` ->
+  // `history.recordTyping`, `applyEntry` (undo/redo replay without re-push), `syncButtons` and the
+  // inactivity pause timer. The initial history step is seeded EAGERLY by the constructor effect on
+  // every real (re)load of a note (Lot C), so `commit`/`onInput` always stack on a seeded history.
+
+  /** Pure undo/redo history owned by this editor (C1: one instance per editor). */
+  private readonly history = new EditHistory();
+
+  /**
+   * Cancel handle of the currently armed inactivity seal timer (Q2/DB7), or `null` when none is
+   * pending. Re-arming a keystroke cancels the previous one; the `DestroyRef` cancels it on teardown
+   * (TB6.3). The wrapper also neutralises the timer callback so a stale expiry after cancel/destroy
+   * is an inert no-op (never touches a destroyed component).
+   */
+  private cancelSeal: (() => void) | null = null;
+
+  /**
+   * Injectable clock seam (Q2/DB3): the component reads "now" through this function so tests can
+   * feed deterministic timestamps for coalescing. Defaults to `Date.now`.
+   */
+  now: () => number = () => Date.now();
+
+  /**
+   * Injectable pause-timer scheduler seam (Q2/DB7): schedules the inactivity `seal()` and returns a
+   * cancel function (registered in `DestroyRef` at implementation time). Tests override it to drive
+   * the pause deterministically and to observe cleanup on destroy. Defaults to `setTimeout`.
+   */
+  scheduleSeal: (cb: () => void, ms: number) => () => void = (cb, ms) => {
+    const id = setTimeout(cb, ms);
+    return () => clearTimeout(id);
+  };
+
+  /** Public signal: true when a past step exists (drives the `.btn-undo` in Lot D). */
+  readonly canUndo = signal(false);
+  /** Public signal: true when a future step exists (drives the `.btn-redo` in Lot D). */
+  readonly canRedo = signal(false);
+
+  /**
+   * Undoes the last step: pops the previous entry from the pure history and re-applies it through
+   * `applyEntry` (re-render + `setSelection` + `blocksChange.emit`) **without re-pushing** (US5,
+   * anti-loop), then refreshes the button signals. No-op when there is no past step.
+   */
+  undo(): void {
+    // Cancel any pending inactivity seal timer (C6/R5): `history.undo()` already seals the open run,
+    // so a later expiry would only re-seal (no-op) and re-sync the same button state. Cancelling it
+    // is behaviour-identical and avoids a redundant deferred callback.
+    this.cancelSeal?.();
+    const entry = this.history.undo();
+    if (entry) this.applyEntry(entry);
+    this.syncButtons();
+  }
+
+  /**
+   * Redoes the last undone step: pops the next entry from the pure history and re-applies it through
+   * `applyEntry` (re-render + `setSelection` + `blocksChange.emit`) **without re-pushing** (US3/US5),
+   * then refreshes the button signals. No-op when there is no future step (e.g. after a new command
+   * purged it — US4).
+   */
+  redo(): void {
+    // Cancel any pending inactivity seal timer (C6/R5): symmetric to `undo()`; a stale expiry would
+    // only re-seal (no-op) and re-sync unchanged buttons. Behaviour-identical, no deferred callback.
+    this.cancelSeal?.();
+    const entry = this.history.redo();
+    if (entry) this.applyEntry(entry);
+    this.syncButtons();
+  }
+
+  /**
+   * Re-applies a history entry using the **same cycle as `commit`** — paint, restore the selection,
+   * emit `blocksChange` and refresh the toolbar highlight — but **without** `history.push` (US5): the
+   * ré-application must not create a parasitic step (anti-loop). A `null` selection repaints without
+   * restoring the caret (left to the browser), which is acceptable per the approach.
+   * @param entry The `{model, selection}` step to restore into the editor.
+   */
+  private applyEntry(entry: HistoryEntry): void {
+    this.model.set(entry.model);
+    const editor = this.editorEl();
+    if (!editor) return;
+    this.paint(editor, entry.model);
+    if (entry.selection) {
+      this.selection.setSelection(editor, entry.selection.from, entry.selection.to);
+    }
+    this.blocksChange.emit(entry.model);
+    this.refreshActive();
+  }
 
   /** Text-colour palette exposed to the toolbar swatches. */
   readonly palette = NOTE_COLOR_PALETTE;
@@ -117,6 +210,12 @@ export class RichTextEditor {
   readonly videoPopupOpen = signal(false);
   /** URL typed into the video popup (two-way bound). */
   readonly videoUrl = signal('');
+  /** Visibility of the link-insertion popup (§C). */
+  readonly linkPopupOpen = signal(false);
+  /** URL typed into the link popup (two-way bound). */
+  readonly linkUrl = signal('');
+  /** Label typed into the link popup — the text carrying the link (two-way bound). */
+  readonly linkLabel = signal('');
 
   /**
    * Wires the reactive plumbing: mirrors incoming blocks into the model (re-rendering only when the
@@ -125,20 +224,42 @@ export class RichTextEditor {
    */
   constructor() {
     // Incoming blocks -> model + render (skipped while focused: caret-jump guard during typing).
+    // Undo/Redo (Lot C): guards the history against the echo of our own `blocksChange.emit` and
+    // resets it on a real (re)load of a note (C4/DC1–DC3, DC7).
     effect(() => {
       const incoming = this.blocks();
+      // Echo guard (C4/DC1): captured BEFORE `model.set`, else the comparison would always be true.
+      // An echo is our own emit bouncing back into `blocks` (same reference as `model()`); a real
+      // (re)load carries a different reference. Read via `untracked` so `model` is NOT a dependency
+      // of this effect: otherwise `commit`'s `model.set` would re-run the effect and, with the input
+      // `blocks` still holding the pre-command reference, spuriously reset+repaint the just-committed
+      // change. The effect must re-run on `blocks()` changes only (R4: guard by reference).
+      const isEcho = incoming === untracked(this.model);
       this.model.set(incoming);
       const editor = this.editorEl();
       if (editor && document.activeElement !== editor) {
         this.paint(editor, incoming);
       }
+      if (!isEcho) {
+        // Real (re)load of a note (US6, D7, DC3): drop the previous note's history. Cancel any
+        // pending seal timer first (DC7/Q3-mineur) so a burst from the OLD note is never sealed, then
+        // reset on the reloaded content — this eager seed is the note's clean initial step, so the
+        // first `commit`/`onInput` stacks on it directly. Both buttons go inactive (US2/US4/US6).
+        this.cancelSeal?.();
+        this.history.reset({ model: incoming, selection: null });
+        this.syncButtons();
+      }
     });
 
     const onSelectionChange = () => this.refreshActive();
     document.addEventListener('selectionchange', onSelectionChange);
-    inject(DestroyRef).onDestroy(() =>
+    const destroyRef = inject(DestroyRef);
+    destroyRef.onDestroy(() =>
       document.removeEventListener('selectionchange', onSelectionChange),
     );
+    // Undo/Redo (Lot B, DB7): cancel any pending inactivity seal timer so a late expiry never seals
+    // (nor syncs) a destroyed component — covers TB6.3.
+    destroyRef.onDestroy(() => this.cancelSeal?.());
   }
 
   /**
@@ -146,12 +267,54 @@ export class RichTextEditor {
    * block identity) and emits it, **without** re-rendering so the caret does not jump. Structural
    * typing (Enter / Backspace) is handled separately in Phase 4.
    */
-  onInput(): void {
+  onInput(event?: Event): void {
     const editor = this.editorEl();
     if (!editor) return;
     const model = this.parser.parse(editor.innerHTML);
     this.model.set(model);
     this.blocksChange.emit(model);
+    // Undo/Redo (Lot B): free typing feeds the history WITHOUT repainting (R2: no caret jump). The
+    // starting state is already seeded eagerly by the constructor effect (Lot C), so the burst simply
+    // records onto that clean initial step — undoing the whole burst restores the note as opened.
+    const selection = this.selection.domToModel(editor);
+    const isBoundary = this.isBoundaryData((event as InputEvent | undefined)?.data);
+    this.history.recordTyping({ model, selection }, this.now(), isBoundary);
+    this.armPauseTimer();
+    this.syncButtons();
+  }
+
+  /**
+   * (Re)arms the inactivity seal timer through the injectable `scheduleSeal` seam (Q2): cancels any
+   * pending one, then schedules `history.seal()` + `syncButtons()` at `TYPING_COALESCE_PAUSE_MS`. The
+   * stored cancel neutralises the callback (`active` flag) so a stale expiry after re-arm or destroy
+   * is a no-op (DB7/TB6.3).
+   */
+  private armPauseTimer(): void {
+    this.cancelSeal?.();
+    let active = true;
+    const cancel = this.scheduleSeal(() => {
+      if (!active) return;
+      active = false;
+      this.cancelSeal = null;
+      this.history.seal();
+      this.syncButtons();
+    }, TYPING_COALESCE_PAUSE_MS);
+    this.cancelSeal = () => {
+      active = false;
+      cancel();
+    };
+  }
+
+  /**
+   * Derives the word-boundary flag (C3) from an `InputEvent.data`: the last inserted character being
+   * whitespace or punctuation seals the current typing step. An absent/null `data` (e.g. the bare
+   * `new Event('input')` of T6.1, or a deletion) is treated as a non-boundary keystroke.
+   * @param data The inserted string carried by the input event, if any.
+   */
+  private isBoundaryData(data: string | null | undefined): boolean {
+    if (!data) return false;
+    const last = data[data.length - 1];
+    return /[\s.,;:!?…()[\]{}«»"']/.test(last);
   }
 
   // --- Structural typing (Phase 4) -------------------------------------------
@@ -337,8 +500,35 @@ export class RichTextEditor {
     if (!editor) return;
     this.paint(editor, newModel);
     this.selection.setSelection(editor, { blockId: at.blockId, offset: at.from }, { blockId: at.blockId, offset: at.to });
+    // Undo/Redo (Lot B): `commit` is the single push point of the history. The note's initial step is
+    // already seeded eagerly by the constructor effect (Lot C), so we push the resulting state onto
+    // that clean seed — undoing this action returns the note as opened.
+    this.history.push({ model: newModel, selection: this.toSelection(at) });
     this.blocksChange.emit(newModel);
     this.refreshActive();
+    this.syncButtons();
+  }
+
+  /**
+   * Copies the pure history's `canUndo`/`canRedo` state into the public signals after every history
+   * mutation (commit, and undo/redo/typing in later groups). These signals drive the toolbar buttons
+   * (`[disabled]`) added in Lot D.
+   */
+  private syncButtons(): void {
+    this.canUndo.set(this.history.canUndo());
+    this.canRedo.set(this.history.canRedo());
+  }
+
+  /**
+   * Converts a single-block `SelectedRange` into the `ModelSelection` shape memorised by a history
+   * step (DB6), so `undo`/`redo` can restore the exact caret/selection (Lot B, groups 3–4).
+   * @param range The single-block range committed with the step.
+   */
+  private toSelection(range: SelectedRange): ModelSelection {
+    return {
+      from: { blockId: range.blockId, offset: range.from },
+      to: { blockId: range.blockId, offset: range.to },
+    };
   }
 
   /**
@@ -448,6 +638,80 @@ export class RichTextEditor {
     this.closeVideoPopup();
   }
 
+  // --- Link insertion (§C/§D) ------------------------------------------------
+
+  /** Opens the link-insertion popup (§C). */
+  openLinkPopup(): void {
+    this.linkPopupOpen.set(true);
+  }
+  /** Closes the link-insertion popup and clears both fields (§C, US1). */
+  closeLinkPopup(): void {
+    this.linkPopupOpen.set(false);
+    this.linkUrl.set('');
+    this.linkLabel.set('');
+  }
+
+  /**
+   * Inserts the label carrying a `link` mark at the caret from the popup fields (§D, DL7): sanitises
+   * the URL (no-op when empty/rejected), falls back to the URL as label when empty, replaces any
+   * non-collapsed selection, and places the caret **after** the link (excluded bound → the next
+   * keystroke does not inherit the link). With no caret in a text block (media selected, empty doc,
+   * multi-block), inserts a **new text block** carrying the link at the insertion index. Then closes.
+   */
+  insertLinkFromUrl(): void {
+    const url = sanitizeHttpUrl(this.linkUrl());
+    if (!url) return; // no-op: empty or rejected scheme (US2, DL7)
+    const label = this.linkLabel().trim() || url; // fallback: label = URL (US2)
+
+    const editor = this.editorEl();
+    const range = editor ? this.selectedRange(editor) : null;
+    const model = this.model();
+    const idx = range ? model.findIndex((b) => b.id === range.blockId) : -1;
+
+    if (range && idx >= 0 && isTextBlock(model[idx])) {
+      const block = model[idx];
+      const base =
+        range.from === range.to ? block : this.docModel.deleteRange(block, range.from, range.to);
+      const withText = this.docModel.insertText(base, range.from, label);
+      const linked = this.docModel.setLink(withText, range.from, range.from + label.length, url);
+      const newModel = model.map((b, i) => (i === idx ? linked : b));
+      const end = range.from + label.length; // caret after the link (excluded bound)
+      this.commit(newModel, { blockId: range.blockId, from: end, to: end });
+    } else {
+      // No caret in a text block → new text block carrying the link (consistent with media, DL7).
+      const at = this.insertionIndex(editor, model);
+      const id = crypto.randomUUID();
+      const newBlock = this.docModel.normalize({
+        id,
+        kind: 'text',
+        text: label,
+        marks: [{ type: 'link', start: 0, end: label.length, value: url }],
+      });
+      const newModel = [...model.slice(0, at), newBlock, ...model.slice(at)];
+      this.commit(newModel, { blockId: id, from: label.length, to: label.length });
+    }
+
+    this.closeLinkPopup();
+  }
+
+  /**
+   * Intercepts a tap on a rendered link to open it externally (§E, DL9): when the click lands on
+   * (or inside) an `<a href>`, prevents the anchor's native navigation and delegates to the external
+   * opener — **always**, whether the editor has focus or not (assumed US5 gap). A click outside any
+   * `<a>` falls through to normal editing.
+   * @param event The click event on the editing area.
+   */
+  onEditorClick(event: MouseEvent): void {
+    const anchor = (event.target as HTMLElement | null)?.closest('a');
+    const href = anchor?.getAttribute('href');
+    if (anchor && href) {
+      event.preventDefault();
+      // Fire-and-forget, but adopt the (possibly undefined in tests) result to avoid an
+      // unhandled rejection should the native open reject.
+      Promise.resolve(this.linkOpener.open(href)).catch(() => undefined);
+    }
+  }
+
   /**
    * Converts a share link into an embeddable URL for YouTube / Vimeo.
    * @param url The pasted share or watch link.
@@ -464,6 +728,13 @@ export class RichTextEditor {
   /**
    * Inserts a media block after the block of the current selection (or at the end of the document),
    * assigning it a fresh id. Unlike text edits, the selection is not restored afterwards.
+   *
+   * Deliberately does its own `model.set` + `paint` + `blocksChange.emit` **without** going through
+   * `commit` and therefore **without** an `history.push`: image/video insertion is not undoable in
+   * this version (known limitation **L2**, constat C3 / refactoring R1 — routing `insertBlock` through
+   * the history is deferred to a later lot; cf. FEATURE_UNDO_REDO.md § Limitations connues). Link
+   * insertion (`insertLinkFromUrl`) and paste (`insertBlocksAtSelection`) DO go through `commit` and
+   * stay undoable.
    * @param block The media block to insert; its `id` is replaced with a fresh UUID.
    */
   private insertBlock(block: NoteBlock): void {

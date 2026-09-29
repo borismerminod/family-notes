@@ -77,13 +77,14 @@ export class DocumentRenderService {
     numbered: 'li',
   };
 
-  /** Canonical nesting order (D7) used to wrap the marks of a segment. */
+  /** Canonical nesting order (D7 + DL2) used to wrap the marks of a segment. `link` is OUTERMOST. */
   private static readonly TYPE_ORDER: Record<MarkType, number> = {
-    bold: 0,
-    italic: 1,
-    underline: 2,
-    color: 3,
-    size: 4,
+    link: 0,
+    bold: 1,
+    italic: 2,
+    underline: 3,
+    color: 4,
+    size: 5,
   };
 
   /**
@@ -233,6 +234,11 @@ export class DocumentRenderService {
         return [`<span style="color:${this.escapeAttr(mark.value ?? '')}">`, '</span>'];
       case 'size':
         return [`<span style="font-size:${this.escapeAttr(mark.value ?? '')}">`, '</span>'];
+      case 'link':
+        return [
+          `<a href="${this.escapeAttr(mark.value ?? '')}" target="_blank" rel="noopener noreferrer">`,
+          '</a>',
+        ];
     }
   }
 
