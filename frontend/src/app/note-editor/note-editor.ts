@@ -34,7 +34,7 @@ export class NoteEditor implements OnInit {
   /** Note title, two-way bound to the title input. */
   title = signal<string>('');
   /** Note category, two-way bound to the category input. */
-  category = signal<string>('');
+  category = signal<(string)>('');
 
   /** Working content as blocks (updated by the editor, sent on save). */
   blocks = signal<NoteBlock[]>([]);
@@ -78,7 +78,7 @@ export class NoteEditor implements OnInit {
       const note = await this.notesService.getNoteById(id);
       if (note) {
         this.title.set(note.title);
-        this.category.set(note.category);
+        this.category.set(note.category !== null ? note.category.name : "");
         this.blocks.set(note.blocks);
       } else {
         this.notFound.set(true);
@@ -98,14 +98,14 @@ export class NoteEditor implements OnInit {
   async onSave(): Promise<void> {
     const payload = {
       title: this.title(),
-      category: this.category(),
+      category: null,
       blocks: this.blocks(),
     };
     try {
       if (this.noteId) {
-        await this.notesService.updateNote({ id: this.noteId, ...payload });
+        await this.notesService.updateNote({ id: this.noteId, ...payload }, this.category());
       } else {
-        await this.notesService.createNote(payload);
+        await this.notesService.createNote(payload, this.category());
       }
       await this.router.navigate(['/notes']);
     } catch (err) {

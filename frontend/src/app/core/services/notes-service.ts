@@ -4,6 +4,8 @@ import { isTextBlock, Mark, NoteBlock, TextBlock, TextBlockKind } from '../model
 import { SqliteService } from './sqlite-service';
 import { DocumentParseService } from './document-parse';
 import { DocumentModelService } from './document-model';
+import { Category } from '../models';
+import { CategoriesService } from './categories.service';
 
 /**
  * SQLite-backed data source for notes. Owns the note CRUD and the translation between the
@@ -20,6 +22,8 @@ export class NotesService extends SqliteService {
   /** Model service used to normalise migrated blocks into their canonical form. */
   private readonly docModel = inject(DocumentModelService);
 
+  private categoriesService = inject(CategoriesService)
+
   constructor() {
     super();
   }
@@ -30,7 +34,15 @@ export class NotesService extends SqliteService {
    */
   async getAllNotes(): Promise<Note[]> {
     return this.runQuery('Erreur lors de la récupération des notes', async () => {
-      const res = await this.db.query('SELECT * FROM notes ORDER BY updated_at DESC');
+      const res = await this.db.query(`
+        SELECT 
+          notes.*, 
+          categories.name AS category_name, 
+          categories.color AS category_color 
+        FROM notes 
+        LEFT JOIN categories ON notes.category_id = categories.id 
+        ORDER BY notes.updated_at DESC
+      `);
       const rows = res.values ?? [];
       return rows.map((row) => this.mapRowToNote(row));
     });
@@ -41,43 +53,92 @@ export class NotesService extends SqliteService {
    * @param id The identifier of the note to fetch.
    * @returns A promise resolving to the matching note, or undefined when none exists.
    */
-  async getNoteById(id: string): Promise<Note | undefined> {
-    return this.runQuery('Erreur lors de la récupération de la note', async () => {
-      const res = await this.db.query('SELECT * FROM notes WHERE id = ?', [id]);
-      const rows = res.values ?? [];
-      return rows.length === 0 ? undefined : this.mapRowToNote(rows[0]);
+  async getNoteById(id: string): Promise<Note | null> {
+      return this.runQuery('Erreur lors de la récupération des notes', async () => {
+        const res = await this.db.query(`
+          SELECT 
+            notes.*, 
+            categories.name AS category_name, 
+            categories.color AS category_color 
+          FROM notes 
+          LEFT JOIN categories ON notes.category_id = categories.id 
+          WHERE notes.id = ?
+        `, [id]);
+        const rows = res.values ?? [];
+        return rows.length ===0  ? null : this.mapRowToNote(rows[0]) 
     });
   }
 
-  /**
-   * Creates a new note, generating its identifier and update date.
-   * @param draft The note fields to store (identifier and update date are assigned here).
-   * @returns A promise resolving to the created note, including its generated identifier.
+ /**
+   * Creates a new note, ensuring the category exists first.
+   * @param draft The note fields to store.
+   * @param categoryName The name of the category to associate with the note.
+   * @returns A promise resolving to the created note.
    */
-  async createNote(draft: Omit<Note, 'id' | 'updatedAt'>): Promise<Note> {
+  async createNote(draft: Omit<Note, 'id' | 'updatedAt'>, categoryName: (string|null)): Promise<Note> {
     return this.runQuery('Erreur lors de la création de la note', async () => {
-      const id = crypto.randomUUID();
-      const updatedAt = new Date().toISOString();
-      const content = this.encodeContent(draft.blocks);
-      const sql = 'INSERT INTO notes (id, title, content, category, updated_at) VALUES (?, ?, ?, ?, ?)';
-      await this.db.run(sql, [id, draft.title, content, draft.category, updatedAt]);
-      await this.persist();
-      return { id, title: draft.title, category: draft.category, blocks: draft.blocks ?? [], updatedAt };
+      try {
+
+        let category = null 
+        if(categoryName !== null)
+        {
+          category = await this.categoriesService.get(categoryName);
+          if (!category) {
+            category = await this.categoriesService.create(categoryName);
+          }
+
+        }
+        const id = crypto.randomUUID();
+        const updatedAt = new Date().toISOString();
+        const content = this.encodeContent(draft.blocks);
+        
+        const sql = 'INSERT INTO notes (id, title, content, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)';
+        await this.db.run(sql, [id, draft.title, content, (category === null ? null : category.id), new Date(), updatedAt]);
+        
+        await this.persist();
+        
+        return { 
+          id, 
+          title: draft.title, 
+          category: (category === null ? null : { id: category.id, name: category.name, color: category.color }), 
+          blocks: draft.blocks ?? [], 
+          updatedAt 
+        };
+      } catch (e) {
+        throw new Error(`Echec lors de la création de la note : ${e}`);
+      }
     });
   }
 
   /**
    * Updates an existing note in place, refreshing its update date.
    * @param note The note to persist, identified by its id (the update date is reassigned here).
+   * @param newCategoryName The new category name to associate with the note.
    * @returns A promise that resolves once the update has been persisted.
    */
-  async updateNote(note: Omit<Note, 'updatedAt'>): Promise<void> {
+  async updateNote(note: Omit<Note, 'updatedAt'>, newCategoryName: (string|null)): Promise<void> {
     return this.runQuery('Erreur lors de la mise à jour de la note', async () => {
-      const updatedAt = new Date().toISOString();
-      const content = this.encodeContent(note.blocks);
-      const sql = 'UPDATE notes SET title = ?, content = ?, category = ?, updated_at = ? WHERE id = ?';
-      await this.db.run(sql, [note.title, content, note.category, updatedAt, note.id]);
-      await this.persist();
+      try {
+        let category = null 
+        if(newCategoryName !== null)
+        {
+          category = await this.categoriesService.get(newCategoryName);
+          if (!category) {
+            category = await this.categoriesService.create(newCategoryName);
+          }
+        }
+
+        const updatedAt = new Date().toISOString();
+        const content = this.encodeContent(note.blocks);
+        
+        const sql = 'UPDATE notes SET title = ?, content = ?, category_id = ?, updated_at = ? WHERE id = ?';
+        await this.db.run(sql, [note.title, content, (category === null ? null : category.id), updatedAt, note.id]);
+        
+        await this.persist();
+        
+      } catch (e) {
+        throw new Error(`Echec lors de la mise à jour de la note : ${e}`);
+      }
     });
   }
 
@@ -104,10 +165,14 @@ export class NotesService extends SqliteService {
    * @returns The corresponding application note.
    */
   private mapRowToNote(row: any): Note {
+    const category: Category = row.category_id
+      ? { id: row.category_id, name: row.category_name, color: row.category_color }
+      : { id: '', name: row.category || '', color: '#808080' };
+
     return {
       id: row.id,
       title: row.title,
-      category: row.category,
+      category: category,
       blocks: this.decodeContent(row.content),
       updatedAt: row.updated_at,
     };

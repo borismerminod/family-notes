@@ -87,6 +87,8 @@ docker run --rm -it -p 4200:4200 -v "$(pwd)/frontend:/app" -v /app/node_modules 
 **Lancer les tests**
 ```powershell
 docker run --rm -it -v "$(pwd)/frontend:/app" -w /app node:lts npx ng test
+
+docker run --rm -it -v "$(pwd)/frontend:/app" -w /app node:lts npx ng test --no-watch --no-progress --filter="fonctionATester"
 ```
 
 *Note : Pour ne pas générer de fichiers de tests (`.spec.ts`), ajoutez `--skip-tests` à la fin de la commande.*

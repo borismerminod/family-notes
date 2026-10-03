@@ -22,9 +22,9 @@ import { NotesService } from '../core/services/notes-service';
 
 // Jeu de données de référence utilisé par la plupart des cas.
 const SAMPLE = [
-  { id: '1', title: 'Courses', category: 'Maison', updatedAt: '2026-01-01' },
-  { id: '2', title: 'Idées vacances', category: 'Voyage', updatedAt: '2026-02-01' },
-  { id: '3', title: 'Recette gâteau', category: 'Cuisine', updatedAt: '2026-03-01' },
+  { id: '1', title: 'Courses', category: {id : 'cat-1', name: 'Maison', color:''}, updatedAt: '2026-01-01' },
+  { id: '2', title: 'Idées vacances', category: {id : 'cat-2', name: 'Voyage', color:''}, updatedAt: '2026-02-01' },
+  { id: '3', title: 'Recette gâteau', category: {id : 'cat-3', name: 'Cuisine', color:''}, updatedAt: '2026-03-01' },
 ];
 
 describe('NoteList (écran liste des notes)', () => {

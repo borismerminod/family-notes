@@ -5,6 +5,7 @@ import { vi } from 'vitest';
 import { NoteEditor } from './note-editor';
 import { NotesService } from '../core/services/notes-service';
 import { NoteBlock } from '../core/models/document.model';
+import { Category } from '../core/models';
 
 /**
  * Tests de l'éditeur « document riche » (TDD / boîte noire) — version **blocks**.
@@ -15,7 +16,7 @@ import { NoteBlock } from '../core/models/document.model';
 interface NoteLike {
   id: string;
   title: string;
-  category: string;
+  category: Category;
   blocks: NoteBlock[];
   updatedAt: string;
 }
@@ -23,7 +24,7 @@ interface NoteLike {
 const EXISTING: NoteLike = {
   id: '2',
   title: 'Idées vacances',
-  category: 'Voyage',
+  category: { id: 'cat-voy', name: 'Voyage', color: '' },
   blocks: [
     { id: 'b1', kind: 'h1', text: 'Destination : Japon', marks: [] },
     { id: 'b2', kind: 'text', text: 'Visiter Kyoto et Osaka.', marks: [] },
@@ -185,7 +186,7 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
       setInputValue(titleInput()!, 'Nouveau titre');
       clickSave();
       await fixture.whenStable();
-      expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Nouveau titre' }));
+      expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Nouveau titre' }), 'Voyage');
     });
 
     it('T4.2 la catégorie modifiée est reflétée à l’enregistrement', async () => {
@@ -194,7 +195,7 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
       setInputValue(categoryInput()!, 'Loisirs');
       clickSave();
       await fixture.whenStable();
-      expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ category: 'Loisirs' }));
+      expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ category: null}), 'Loisirs' );
     });
   });
 
@@ -226,7 +227,7 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
       clickSave();
       await fixture.whenStable();
       expect(notesService.updateNote).toHaveBeenCalledWith(
-        expect.objectContaining({ id: '2', blocks: expect.any(Array) }),
+        expect.objectContaining({ id: '2', blocks: expect.any(Array), }),'Voyage'
       );
       expect(notesService.createNote).not.toHaveBeenCalled();
     });
@@ -238,7 +239,7 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
       setContent('<p>Contenu</p>');
       clickSave();
       await fixture.whenStable();
-      expect(notesService.createNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Ma note' }));
+      expect(notesService.createNote).toHaveBeenCalledWith(expect.objectContaining({ title: 'Ma note'}), '');
       expect(savedBlocks().some((b) => (b as any).text === 'Contenu')).toBe(true);
       expect(notesService.updateNote).not.toHaveBeenCalled();
     });

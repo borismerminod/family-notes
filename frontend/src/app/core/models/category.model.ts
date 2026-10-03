@@ -10,7 +10,7 @@
  */
 export interface Category {
   /** Identifiant unique de la catégorie (UUID). */
-  id: string;
+  id: (string|null);
   /** Libellé affiché et saisi par l'utilisateur. */
   name: string;
   /** Couleur d'accent optionnelle (ex. pour le tag sur la carte de note). */

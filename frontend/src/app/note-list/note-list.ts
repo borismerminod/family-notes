@@ -61,8 +61,14 @@ export class NoteList implements OnInit {
     }
 
     return allNotes.filter(note => {
+
       const titleMatches = note.title.toLowerCase().includes(query);
-      const categoryMatches = note.category.toLowerCase().includes(query);
+      let categoryMatches = false
+      if(note.category !== null && note.category !== undefined)
+      {
+        categoryMatches = note.category.name.toLowerCase().includes(query)
+      }
+
       return titleMatches || categoryMatches;
     });
   });
@@ -100,7 +106,7 @@ export class NoteList implements OnInit {
    * @returns A hex colour taken from the accent palette.
    */
   accentColor(note: Note): string {
-    const key = note.category ?? '';
+    const key = note.category!.name ?? '';
     let hash = 0;
     for (let i = 0; i < key.length; i++) {
       hash = (hash + key.charCodeAt(i)) % this.accentPalette.length;

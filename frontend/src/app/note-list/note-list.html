@@ -38,7 +38,10 @@
             <div class="card-meta">
               <span class="cat-pill">
                 <span class="cat-dot"></span>
-                {{ note.category }}
+                @if(note.category !== null)
+                {
+                  {{ note.category.name }}
+                }
               </span>
               <span class="note-date">{{ note.updatedAt | date:'shortDate' }}</span>
             </div>
