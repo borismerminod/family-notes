@@ -1,17 +1,15 @@
 /**
  * @file category.model.ts
- * @description Modèle de catégorie de note.
+ * @description Note category model.
  *
- * Les catégories sont stockées dans leur propre table `categories` (`id`, `name` unique,
- * `color`) et les notes les référencent par `notes.category_id` (cf. scripts/schema_notes.sql).
- * La migration depuis l'ancien format — catégorie en texte libre sur la note — est jouée au
- * démarrage par `SqliteService.migrateSchema()`.
+ * Categories are stored in their own 'categories' table ('id', unique name, 'color'), and notes reference them via 'notes.category_id' (see scripts/schema_notes.sql).
+ * The migration from the old format—category as free text on the note—is run at startup by 'SqliteService.migrateSchema()'.
  */
 export interface Category {
-  /** Identifiant unique de la catégorie (UUID). */
+  /** Unique identifier for the category (UUID). */
   id: (string|null);
-  /** Libellé affiché et saisi par l'utilisateur. */
+  /** Label displayed and entered by the user. */
   name: string;
-  /** Couleur d'accent optionnelle (ex. pour le tag sur la carte de note). */
+  /** Optional accent color (e.g., for the tag on the note card). */
   color?: string;
 }

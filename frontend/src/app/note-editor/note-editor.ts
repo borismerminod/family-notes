@@ -74,8 +74,6 @@ export class NoteEditor implements OnInit {
     this.noteId = this.route.snapshot.paramMap.get('id');
     this.editing.set(this.noteId !== null);
 
-    // Les deux chargements sont lancés en parallèle : la liste des catégories ne doit pas
-    // retarder l'affichage de la note (ni son indicateur de chargement).
     const categories = this.loadCategories();
 
     if (this.noteId) {

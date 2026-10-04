@@ -109,8 +109,6 @@ export class NoteList implements OnInit {
   accentColor(note: Note): string {
     const name = note.category?.name?.trim() ?? '';
     const stored = note.category?.color?.trim();
-    // La couleur n'est retenue que pour une vraie catégorie : une note sans catégorie se voit
-    // attribuer une couleur sentinelle à la lecture, qui ne doit pas teinter toutes les cartes.
     return name && stored ? stored : this.derivedAccentColor(name);
   }
 
