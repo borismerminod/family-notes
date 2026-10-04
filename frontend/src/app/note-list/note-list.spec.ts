@@ -89,6 +89,31 @@ describe('NoteList (écran liste des notes)', () => {
   // ---------------------------------------------------------------------------
   // Groupe 1 — Chargement initial
   // ---------------------------------------------------------------------------
+  // --- Couleur d'accent ------------------------------------------------------
+  describe('Couleur d’accent', () => {
+    const cardStyle = (index: number) =>
+      el.querySelectorAll<HTMLElement>('.note-card')[index].getAttribute('style') ?? '';
+
+    it('utilise la couleur enregistrée sur la catégorie', async () => {
+      await render([
+        { id: '1', title: 'Courses', category: { id: 'cat-1', name: 'Maison', color: '#34C759' }, updatedAt: '2026-01-01' },
+      ]);
+
+      expect(cardStyle(0)).toContain('#34C759');
+    });
+
+    it('retombe sur une couleur dérivée du nom quand la catégorie n’a pas de couleur', async () => {
+      await render([
+        { id: '1', title: 'Courses', category: { id: 'cat-1', name: 'Maison', color: '' }, updatedAt: '2026-01-01' },
+        { id: '2', title: 'Menus', category: { id: 'cat-1', name: 'Maison', color: '' }, updatedAt: '2026-01-02' },
+      ]);
+
+      expect(cardStyle(0)).not.toBe('');
+      // Deux notes de la même catégorie partagent la même couleur dérivée.
+      expect(cardStyle(0)).toBe(cardStyle(1));
+    });
+  });
+
   describe('Chargement initial', () => {
     it('T1.1 demande les notes à la source de données à l’ouverture', async () => {
       await render(SAMPLE);

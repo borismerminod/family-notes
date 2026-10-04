@@ -100,16 +100,31 @@ export class NoteList implements OnInit {
   }
 
   /**
-   * Computes a deterministic accent colour for a note derived from its category, so notes in the
-   * same category always share the same colour regardless of list order.
+   * Accent colour of a note: the colour saved on its category when it has one (picked in the
+   * editor, see US4), otherwise a colour derived from the category name so that notes sharing a
+   * category still share a colour.
    * @param note The note whose category drives the colour selection.
-   * @returns A hex colour taken from the accent palette.
+   * @returns A hex colour.
    */
   accentColor(note: Note): string {
-    const key = note.category!.name ?? '';
+    const name = note.category?.name?.trim() ?? '';
+    const stored = note.category?.color?.trim();
+    // La couleur n'est retenue que pour une vraie catégorie : une note sans catégorie se voit
+    // attribuer une couleur sentinelle à la lecture, qui ne doit pas teinter toutes les cartes.
+    return name && stored ? stored : this.derivedAccentColor(name);
+  }
+
+  /**
+   * Computes a deterministic accent colour from a category name, so notes in the same category
+   * always share the same colour regardless of list order. Used as long as the category carries no
+   * colour of its own.
+   * @param name The category name driving the colour selection.
+   * @returns A hex colour taken from the accent palette.
+   */
+  private derivedAccentColor(name: string): string {
     let hash = 0;
-    for (let i = 0; i < key.length; i++) {
-      hash = (hash + key.charCodeAt(i)) % this.accentPalette.length;
+    for (let i = 0; i < name.length; i++) {
+      hash = (hash + name.charCodeAt(i)) % this.accentPalette.length;
     }
     return this.accentPalette[hash];
   }

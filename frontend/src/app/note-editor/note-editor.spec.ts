@@ -4,8 +4,9 @@ import { vi } from 'vitest';
 
 import { NoteEditor } from './note-editor';
 import { NotesService } from '../core/services/notes-service';
+import { CategoriesService } from '../core/services/categories.service';
 import { NoteBlock } from '../core/models/document.model';
-import { Category } from '../core/models';
+import { Category, NOTE_COLOR_PALETTE } from '../core/models';
 
 /**
  * Tests de l'éditeur « document riche » (TDD / boîte noire) — version **blocks**.
@@ -40,17 +41,31 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
     createNote: ReturnType<typeof vi.fn>;
     updateNote: ReturnType<typeof vi.fn>;
   };
+  let categoriesService: {
+    getAllCategories: ReturnType<typeof vi.fn>;
+    getOrCreate: ReturnType<typeof vi.fn>;
+  };
   let navigateSpy: ReturnType<typeof vi.spyOn>;
 
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  async function setup(opts: { id?: string; getNoteById?: ReturnType<typeof vi.fn> } = {}): Promise<void> {
+  async function setup(
+    opts: { id?: string; getNoteById?: ReturnType<typeof vi.fn>; categories?: Category[] } = {},
+  ): Promise<void> {
     notesService = {
       getNoteById: opts.getNoteById ?? vi.fn().mockResolvedValue(EXISTING),
       createNote: vi.fn().mockResolvedValue(EXISTING),
       updateNote: vi.fn().mockResolvedValue(undefined),
+    };
+    categoriesService = {
+      getAllCategories: vi.fn().mockResolvedValue(opts.categories ?? []),
+      getOrCreate: vi.fn().mockImplementation(async (name: string, color?: string) => ({
+        id: 'cat-x',
+        name,
+        color,
+      })),
     };
 
     await TestBed.configureTestingModule({
@@ -58,6 +73,7 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
       providers: [
         provideRouter([]),
         { provide: NotesService, useValue: notesService },
+        { provide: CategoriesService, useValue: categoriesService },
         {
           provide: ActivatedRoute,
           useValue: { snapshot: { paramMap: convertToParamMap(opts.id ? { id: opts.id } : {}) } },
@@ -79,7 +95,10 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
   }
 
   const titleInput = () => el.querySelector<HTMLInputElement>('.editor-title');
-  const categoryInput = () => el.querySelector<HTMLInputElement>('.editor-category');
+  /** Champ de saisie porté par le composant `CategorySelector` (intégré réellement). */
+  const categoryInput = () => el.querySelector<HTMLInputElement>('.category-input');
+  /** Éléments de la liste déroulante des catégories (visible seulement au focus). */
+  const categoryOptions = () => Array.from(el.querySelectorAll<HTMLLIElement>('.category-list li'));
   const editorContent = () => el.querySelector<HTMLElement>('.editor-content');
 
   function setInputValue(input: HTMLInputElement, value: string): void {
@@ -93,6 +112,17 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
     const ce = editorContent()!;
     ce.innerHTML = html;
     ce.dispatchEvent(new Event('input', { bubbles: true }));
+    fixture.detectChanges();
+  }
+
+  /**
+   * Ouvre la palette du sélecteur et clique la pastille d'indice donné — l'ordre est celui de
+   * `NOTE_COLOR_PALETTE`, que le composant affiche tel quel.
+   */
+  function pickColor(index: number): void {
+    el.querySelector<HTMLButtonElement>('.color-picker-btn')!.click();
+    fixture.detectChanges();
+    el.querySelectorAll<HTMLButtonElement>('.palette-item')[index].click();
     fixture.detectChanges();
   }
 
@@ -196,6 +226,148 @@ describe('NoteEditor (éditeur document riche, blocks)', () => {
       clickSave();
       await fixture.whenStable();
       expect(notesService.updateNote).toHaveBeenCalledWith(expect.objectContaining({ category: null}), 'Loisirs' );
+    });
+  });
+
+  // --- Groupe 4bis — Sélecteur de catégorie ---------------------------------
+  describe('Sélecteur de catégorie', () => {
+    const CATEGORIES: Category[] = [
+      { id: 'cat-voy', name: 'Voyage', color: '#007AFF' },
+      { id: 'cat-loi', name: 'Loisirs', color: '#FF9500' },
+    ];
+
+    it('T4b.1 propose les catégories existantes à l’ouverture de la liste', async () => {
+      await setup({ categories: CATEGORIES });
+      await render();
+
+      expect(categoriesService.getAllCategories).toHaveBeenCalled();
+      expect(categoryOptions()).toHaveLength(0);
+
+      categoryInput()!.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+
+      expect(categoryOptions().map((li) => li.textContent?.trim())).toEqual(['Voyage', 'Loisirs']);
+    });
+
+    it('T4b.2 choisir une catégorie dans la liste la reporte à l’enregistrement', async () => {
+      await setup({ categories: CATEGORIES });
+      await render();
+
+      categoryInput()!.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+      categoryOptions()[1].click();
+      fixture.detectChanges();
+
+      expect(categoryInput()?.value).toBe('Loisirs');
+
+      clickSave();
+      await fixture.whenStable();
+      expect(notesService.createNote).toHaveBeenCalledWith(expect.anything(), 'Loisirs');
+    });
+
+    it('T4b.4 enregistre la couleur choisie avec la catégorie saisie', async () => {
+      await setup({ categories: CATEGORIES });
+      await render();
+
+      setInputValue(categoryInput()!, 'Jardin');
+      pickColor(2);
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(categoriesService.getOrCreate).toHaveBeenCalledWith('Jardin', NOTE_COLOR_PALETTE[2]);
+    });
+
+    it('T4b.5 enregistre la nouvelle couleur d’une catégorie existante', async () => {
+      await setup({ id: '2', categories: CATEGORIES });
+      await render();
+
+      setInputValue(categoryInput()!, 'Loisirs');
+      pickColor(1);
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(categoriesService.getOrCreate).toHaveBeenCalledWith('Loisirs', NOTE_COLOR_PALETTE[1]);
+    });
+
+    it('T4b.6 transmet la couleur de la catégorie choisie dans la liste', async () => {
+      await setup({ categories: CATEGORIES });
+      await render();
+
+      categoryInput()!.dispatchEvent(new Event('focus'));
+      fixture.detectChanges();
+      categoryOptions()[1].click();
+      fixture.detectChanges();
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(categoriesService.getOrCreate).toHaveBeenCalledWith('Loisirs', '#FF9500');
+    });
+
+    it('T4b.7 n’impose aucune couleur quand l’utilisateur n’en choisit pas', async () => {
+      await setup({ categories: CATEGORIES });
+      await render();
+
+      setInputValue(categoryInput()!, 'Jardin');
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(categoriesService.getOrCreate).toHaveBeenCalledWith('Jardin', undefined);
+      expect(notesService.createNote).toHaveBeenCalledWith(expect.anything(), 'Jardin');
+    });
+
+    it('T4b.8 ne touche à aucune catégorie quand le champ est vide', async () => {
+      await setup({ categories: CATEGORIES });
+      await render();
+
+      pickColor(0);
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(categoriesService.getOrCreate).not.toHaveBeenCalled();
+    });
+
+    it('T4b.9 vider le champ repart sans couleur', async () => {
+      await setup({ id: '2', categories: CATEGORIES });
+      await render();
+
+      pickColor(1);
+      setInputValue(categoryInput()!, '');
+      setInputValue(categoryInput()!, 'Jardin');
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(categoriesService.getOrCreate).toHaveBeenCalledWith('Jardin', undefined);
+    });
+
+    it('T4b.10 enregistre la note même si la couleur ne peut pas être écrite', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      await setup({ categories: CATEGORIES });
+      await render();
+      categoriesService.getOrCreate.mockRejectedValue(new Error('DB indisponible'));
+
+      setInputValue(categoryInput()!, 'Jardin');
+      pickColor(2);
+
+      clickSave();
+      await fixture.whenStable();
+
+      expect(notesService.createNote).toHaveBeenCalledWith(expect.anything(), 'Jardin');
+      expect(navigateSpy).toHaveBeenCalledWith(['/notes']);
+    });
+
+    it('T4b.3 l’éditeur reste utilisable quand les catégories ne se chargent pas', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      await setup({ id: '2' });
+      categoriesService.getAllCategories.mockRejectedValue(new Error('DB indisponible'));
+      await render();
+
+      expect(categoryInput()?.value).toBe('Voyage');
     });
   });
 

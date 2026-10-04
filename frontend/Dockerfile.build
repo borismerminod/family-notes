@@ -14,10 +14,12 @@ RUN apt-get update && apt-get install -y \
 
 
 # --------------------------------------------------
-# Node.js 20
+# Node.js 22 (LTS)
 # --------------------------------------------------
+# Angular CLI 21 exige ^20.19.0 || ^22.12.0 || >=24.0.0 : la branche 20.x passait tout juste
+# (20.19 est le plancher), 22 LTS laisse de la marge.
 
-RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
@@ -54,10 +56,36 @@ ENV PATH="${PATH}:${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin:${ANDROID_SDK_ROO
 
 RUN yes | sdkmanager --licenses > /dev/null || true
 
+# android-36 : exigé par les plugins Capacitor 8 (androidx.browser 1.9.0) via compileSdkVersion.
+# build-tools 34 : réclamé par capacitor-cordova-android-plugins. Les épingler ici évite que
+# Gradle les retélécharge dans chaque conteneur jetable.
 RUN sdkmanager \
     "platform-tools" \
+    "platforms;android-36" \
     "platforms;android-35" \
-    "build-tools;35.0.0"
+    "build-tools;36.0.0" \
+    "build-tools;35.0.0" \
+    "build-tools;34.0.0"
+
+
+# --------------------------------------------------
+# Gradle
+# --------------------------------------------------
+# Le dépôt ne contient pas `android/gradle/wrapper/gradle-wrapper.jar` : les builds appellent
+# `gradle` directement (cf. .agent/COMMANDES.md §3.3). La version est alignée sur
+# android/gradle/wrapper/gradle-wrapper.properties et compatible avec AGP 8.7.2.
+
+ENV GRADLE_VERSION=8.11.1
+ENV GRADLE_SHA256=f397b287023acdba1e9f6fc5ea72d22dd63669d59ed4a289a29b1a76eee151c6
+
+RUN wget -q \
+    https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip \
+    -O /tmp/gradle.zip \
+    && echo "${GRADLE_SHA256}  /tmp/gradle.zip" | sha256sum -c - \
+    && unzip -q /tmp/gradle.zip -d /opt \
+    && rm /tmp/gradle.zip
+
+ENV PATH="${PATH}:/opt/gradle-${GRADLE_VERSION}/bin"
 
 
 # --------------------------------------------------

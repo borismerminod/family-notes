@@ -93,7 +93,7 @@ export class NotesService extends SqliteService {
         const content = this.encodeContent(draft.blocks);
         
         const sql = 'INSERT INTO notes (id, title, content, category_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)';
-        await this.db.run(sql, [id, draft.title, content, (category === null ? null : category.id), new Date(), updatedAt]);
+        await this.db.run(sql, [id, draft.title, content, (category === null ? null : category.id), updatedAt, updatedAt]);
         
         await this.persist();
         

@@ -30,6 +30,14 @@ describe('CategoriesService', () => {
   });
 
   describe('create', () => {
+    it('should store an empty colour when none is given', async () => {
+      const category = await service.create('Sans couleur');
+
+      const [, params] = mockDb.run.mock.calls[0];
+      expect(params).toEqual([category.id, 'Sans couleur', '']);
+      expect(category.color).toBe('');
+    });
+
     it('should create a new category', async () => {
       const name = 'New Category';
       const color = '#FF5733';
@@ -61,6 +69,66 @@ describe('CategoriesService', () => {
     });
   });
 
+  describe('getOrCreate', () => {
+    it('crée la catégorie avec la couleur choisie quand le nom est nouveau', async () => {
+      mockDb.query.mockImplementation(async () => ({ values: [] }));
+
+      const category = await service.getOrCreate('Jardin', '#34C759');
+
+      expect(category.name).toBe('Jardin');
+      expect(category.color).toBe('#34C759');
+      const [sql, params] = mockDb.run.mock.calls[0];
+      expect(String(sql).toLowerCase()).toContain('insert into categories');
+      expect(params).toContain('#34C759');
+    });
+
+    it('met à jour la couleur d’une catégorie existante quand elle change', async () => {
+      mockDb.query.mockImplementation(async () => ({
+        values: [{ id: 'cat-1', name: 'Travail', color: '#007AFF' }],
+      }));
+
+      const category = await service.getOrCreate('Travail', '#FF9500');
+
+      expect(category).toEqual({ id: 'cat-1', name: 'Travail', color: '#FF9500' });
+      const [sql, params] = mockDb.run.mock.calls[0];
+      expect(String(sql).toLowerCase()).toContain('update categories set color');
+      expect(params).toEqual(['#FF9500', 'cat-1']);
+    });
+
+    it('n’écrit rien quand la couleur est identique, à la casse près', async () => {
+      mockDb.query.mockImplementation(async () => ({
+        values: [{ id: 'cat-1', name: 'Travail', color: '#FF9500' }],
+      }));
+
+      await service.getOrCreate('Travail', '#ff9500');
+
+      expect(mockDb.run).not.toHaveBeenCalled();
+      expect((service as any).persist).not.toHaveBeenCalled();
+    });
+
+    it('n’écrit rien quand aucune couleur n’est fournie', async () => {
+      mockDb.query.mockImplementation(async () => ({
+        values: [{ id: 'cat-1', name: 'Travail', color: '#007AFF' }],
+      }));
+
+      const category = await service.getOrCreate('Travail');
+
+      expect(category.color).toBe('#007AFF');
+      expect(mockDb.run).not.toHaveBeenCalled();
+    });
+
+    it('ignore les espaces de bord du nom saisi', async () => {
+      mockDb.query.mockImplementation(async () => ({
+        values: [{ id: 'cat-1', name: 'Travail', color: '#007AFF' }],
+      }));
+
+      await service.getOrCreate('  Travail  ');
+
+      const [, params] = mockDb.query.mock.calls[0];
+      expect(params).toEqual(['Travail']);
+    });
+  });
+
   describe('CRUD operations', () => {
     it('should fetch all categories', async () => {
       const categories = [
@@ -87,7 +155,10 @@ describe('CategoriesService', () => {
 
     it('should update the color of a category', async () => {
       await service.setColor('1', '#FF0000');
-      expect(mockDb.run).toHaveBeenCalled();
+
+      const [sql, params] = mockDb.run.mock.calls[0];
+      expect(String(sql).toLowerCase()).toContain('update categories set color');
+      expect(params).toEqual(['#FF0000', '1']);
       expect((service as any).persist).toHaveBeenCalled();
     });
   });

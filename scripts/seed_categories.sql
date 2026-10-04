@@ -1,6 +1,7 @@
--- Seed categories
-INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-1', 'Famille', '#FF5733');
-INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-2', 'Travail', '#33FF57');
-INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-3', 'Loisirs', '#3357FF');
-INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-4', 'Santé', '#F33FF');
-INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-5', 'Urgent', '#FF0000');
+-- Jeu de catégories du seed (ids identiques à ceux produits par
+-- migration_relational_categories.sql ; couleurs issues de NOTE_COLOR_PALETTE).
+INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-famille', 'Famille', '#34C759');
+INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-loisirs', 'Loisirs', '#FF3B30');
+INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-personnel', 'Personnel', '#007AFF');
+INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-travail', 'Travail', '#FF9500');
+INSERT OR IGNORE INTO categories (id, name, color) VALUES ('cat-Études', 'Études', '#AF52DE');

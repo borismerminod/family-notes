@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { NotesService } from './notes-service';
+import { DatabaseService } from './database.service';
 import {CategoriesService} from './categories.service'
 import { Category, Note } from '../models';
 import { NoteBlock } from '../models/document.model';
@@ -35,27 +36,12 @@ const mocks = vi.hoisted(() => {
     run: vi.fn(),
     query: vi.fn(),
   };
-  const sqliteConnection = {
-    createConnection: vi.fn(),
-    retrieveConnection: vi.fn(),
-    closeConnection: vi.fn(),
-    isConnection: vi.fn(),
-    isDatabase: vi.fn(),
-    copyFromAssets: vi.fn(),
-    initWebStore: vi.fn(),
-    saveToStore: vi.fn(),
-    checkConnectionsConsistency: vi.fn(),
+  /** Double du service qui porte la connexion : aucun plugin Capacitor n'est touché ici. */
+  const database = {
+    connect: vi.fn(),
+    persist: vi.fn(),
   };
-  return { dbConnection, sqliteConnection };
-});
-
-vi.mock('@capacitor-community/sqlite', () => {
-  class SQLiteConnection {
-    constructor() {
-      return mocks.sqliteConnection as unknown as SQLiteConnection;
-    }
-  }
-  return { CapacitorSQLite: {}, SQLiteConnection };
+  return { dbConnection, database };
 });
 
 // ---------------------------------------------------------------------------
@@ -97,17 +83,12 @@ describe('NotesService (accès SQLite, modèle blocks)', () => {
     mocks.dbConnection.run.mockReset().mockResolvedValue({ changes: { changes: 1, lastId: 1 } });
     mocks.dbConnection.query.mockReset().mockResolvedValue({ values: [] });
 
-    mocks.sqliteConnection.createConnection.mockReset().mockResolvedValue(mocks.dbConnection);
-    mocks.sqliteConnection.retrieveConnection.mockReset().mockResolvedValue(mocks.dbConnection);
-    mocks.sqliteConnection.closeConnection.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.isConnection.mockReset().mockResolvedValue({ result: false });
-    mocks.sqliteConnection.isDatabase.mockReset().mockResolvedValue({ result: true });
-    mocks.sqliteConnection.copyFromAssets.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.initWebStore.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.saveToStore.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.checkConnectionsConsistency.mockReset().mockResolvedValue({ result: false });
+    mocks.database.connect.mockReset().mockResolvedValue(mocks.dbConnection);
+    mocks.database.persist.mockReset().mockResolvedValue(undefined);
 
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [{ provide: DatabaseService, useValue: mocks.database }],
+    });
     service = TestBed.inject(NotesService) as unknown as NotesServiceContract;
   });
 

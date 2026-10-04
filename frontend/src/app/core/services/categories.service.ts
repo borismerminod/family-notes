@@ -25,7 +25,7 @@ export class CategoriesService extends SqliteService {
 
   async get(name: string): Promise<Category | undefined> {
     return this.runQuery(`Erreur lors de la récupération de la catégorie: ${name}`, async () => {
-      const res = await this.db.query('SELECT * FROM categories WHERE name = ?', [name]);
+      const res = await this.db.query('SELECT * FROM categories WHERE name = ?', [name.trim()]);
       const rows = res.values ?? [];
       if (rows.length === 0) return undefined;
       const row = rows[0];
@@ -48,6 +48,42 @@ export class CategoriesService extends SqliteService {
     });
   }
 
+
+  /**
+   * Résout un nom de catégorie en catégorie, en y appliquant la couleur demandée (US4) :
+   * la catégorie est créée avec cette couleur si le nom est nouveau, sa couleur est mise à jour si
+   * elle a changé, et rien n'est écrit si elle est identique ou si aucune couleur n'est fournie.
+   * La couleur appartient à la catégorie : la changer la change pour toutes les notes qui la
+   * portent.
+   * @param name Le nom saisi (les espaces de bord sont ignorés).
+   * @param color La couleur choisie, ou `undefined` pour laisser la couleur en place.
+   * @returns La catégorie correspondante, avec sa couleur à jour.
+   */
+  async getOrCreate(name: string, color?: string): Promise<Category> {
+    const existing = await this.get(name);
+    if (!existing) {
+      return this.create(name, color);
+    }
+
+    const unchanged = !color || this.sameColor(existing.color, color);
+    if (unchanged || !existing.id) {
+      return existing;
+    }
+
+    await this.setColor(existing.id, color);
+    return { ...existing, color };
+  }
+
+  /**
+   * Compare deux couleurs sans tenir compte de la casse (`#ff9500` ≡ `#FF9500`), les couleurs
+   * stockées pouvant venir du seed, de la palette ou d'une saisie antérieure.
+   * @param a La première couleur (éventuellement absente).
+   * @param b La seconde couleur.
+   * @returns `true` quand les deux couleurs désignent la même valeur.
+   */
+  private sameColor(a: string | undefined, b: string): boolean {
+    return (a ?? '').trim().toLowerCase() === b.trim().toLowerCase();
+  }
 
   async delete(id: string): Promise<void> {
     return this.runQuery('Erreur lors de la suppression de la catégorie', async () => {
