@@ -1,0 +1,21 @@
+<div class="kanban-list-container">
+  <header class="topbar">
+    <h1>Mes Kanbans</h1>
+    <p class="count">{{ countLabel() }}</p>
+  </header>
+
+  @if (isLoading()) {
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  } @else {
+    <div class="kanbans-list">
+      @for (kanban of kanbans(); track kanban.id) {
+        <article class="kanban-card">
+          <h3 class="kanban-name">{{ kanban.name }}</h3>
+          <span class="kanban-date">{{ kanban.updatedAt | date:'shortDate' }}</span>
+        </article>
+      }
+    </div>
+  }
+</div>

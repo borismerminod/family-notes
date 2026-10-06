@@ -1,0 +1,123 @@
+/* ============================================================
+   Liste des kanbans — feuille de style (mobile-first)
+   Cf. maquette : .agent/KANBAN/CRUD/MAQUETTE_KANBAN_LIST.html
+   Tokens alignés sur note-list.css (redéclarés car non globaux).
+
+   État : minimal, limité à ce que le gabarit affiche aujourd'hui
+   (groupe 6 / T6.1 à T6.4). États vide et erreur, bouton flottant et
+   popups viendront avec les groupes qui les exigent.
+   ============================================================ */
+
+:host {
+  /* Palette (alignée sur NOTE_COLOR_PALETTE / block-style.model.ts) */
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .04);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #ffffff;
+    --text-2: #98989f;
+    --separator: #38383a;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  }
+}
+
+.kanban-list-container {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+/* ---- Barre supérieure (sticky) ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: calc(14px + var(--safe-top)) 20px 12px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.topbar .count {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* ---- Liste des tableaux ---- */
+.kanbans-list {
+  padding: 12px 16px calc(24px + var(--safe-bottom));
+}
+
+/* ---- Carte tableau ---- */
+.kanban-card {
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px 14px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.kanban-name {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-date {
+  display: block;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ---- Chargement ---- */
+.loading-overlay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.loading-overlay .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

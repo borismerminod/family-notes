@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maquette — Page CRUD Kanban (mobile)</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+  /* ============================================================
+     MAQUETTE — Page CRUD « Mes Kanbans » (mobile-first)
+     Cf. spécification : FEATURE_KANBAN_CRUD.md (US1 → US5)
+     Tokens et composants repris de note-list.css et confirm-dialog.css
+     pour garantir la cohérence visuelle avec la page « Mes Notes ».
+     ============================================================ */
+
+  :root {
+    /* ---- Tokens identiques à note-list.css ---- */
+    --bg: #f2f2f7;
+    --surface: #ffffff;
+    --surface-2: #f2f2f7;
+    --text: #1c1c1e;
+    --text-2: #8e8e93;
+    --separator: #e5e5ea;
+    --accent: #007aff;
+    --danger: #ff3b30;
+    --radius: 16px;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.04);
+    --shadow-pop: 0 1px 3px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.18);
+
+    /* ---- Palette d'accent (NOTE_COLOR_PALETTE) ---- */
+    --c-rouge: #ff3b30;
+    --c-orange: #ff9500;
+    --c-vert: #34c759;
+    --c-bleu: #007aff;
+    --c-violet: #af52de;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --surface-2: #2c2c2e;
+      --text: #ffffff;
+      --text-2: #98989f;
+      --separator: #38383a;
+      --shadow: 0 1px 3px rgba(0,0,0,.4);
+      --shadow-pop: 0 1px 3px rgba(0,0,0,.5), 0 12px 40px rgba(0,0,0,.6);
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #d8d8dc;
+    color: var(--text);
+    padding: 32px 16px 48px;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #111113; } }
+
+  /* ---- Présentation des écrans (hors maquette) ---- */
+  .board-title {
+    text-align: center;
+    margin: 0 0 6px;
+    font-size: 22px;
+    color: var(--text);
+  }
+  .board-sub {
+    text-align: center;
+    margin: 0 auto 32px;
+    max-width: 640px;
+    font-size: 14px;
+    color: var(--text-2);
+  }
+  .screens {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 48px 40px;
+  }
+  .screen { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .screen-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+  }
+  .screen-label b { color: var(--accent); }
+
+  /* ---- Cadre téléphone (uniquement pour la maquette) ---- */
+  .phone {
+    width: 375px;
+    max-width: calc(100vw - 56px);
+    height: 700px;
+    background: var(--bg);
+    border-radius: 44px;
+    box-shadow: 0 0 0 12px #1a1a1c, 0 24px 60px rgba(0,0,0,.35);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---- Barre supérieure (reprise de note-list.css) ---- */
+  .topbar {
+    padding: 22px 20px 12px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border-bottom: 0.5px solid var(--separator);
+  }
+  .topbar h1 {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+  .topbar .count { margin: 4px 0 0; font-size: 13px; color: var(--text-2); }
+
+  /* Barre supérieure de l'écran de détail : retour + titre + renommer */
+  .topbar.detail {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 18px 12px 12px;
+  }
+  .topbar.detail h1 {
+    flex: 1;
+    min-width: 0;
+    font-size: 22px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .btn-back {
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-size: 16px;
+    display: flex;
+    align-items: center;
+    padding: 8px 4px;
+    cursor: pointer;
+  }
+
+  /* ---- Liste des tableaux ---- */
+  .list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px 16px 110px;
+  }
+
+  /* ---- Carte tableau (dérivée de .note-card) ---- */
+  .board-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border-radius: var(--radius);
+    padding: 16px 10px 16px 14px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .board-card:active { transform: scale(0.985); transition: transform .1s; }
+  /* Barre d'accent : couleur dérivée du nom (même principe qu'accentColor des notes) */
+  .board-card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 5px;
+    background: var(--c, var(--accent));
+  }
+
+  /* Pastille d'icône tableau — distingue visuellement un kanban d'une note */
+  .board-glyph {
+    flex: 0 0 auto;
+    width: 36px; height: 36px;
+    margin-left: 4px;
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--c, var(--accent)) 14%, transparent);
+    color: var(--c, var(--accent));
+    display: flex; align-items: center; justify-content: center;
+  }
+  .board-glyph .material-icons { font-size: 22px; }
+
+  .card-body { flex: 1; min-width: 0; }
+  .board-name {
+    margin: 0 0 4px;
+    font-size: 17px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .board-date { font-size: 12px; color: var(--text-2); }
+
+  /* ---- Boutons d'action (repris de .btn-icon) ---- */
+  .actions { display: flex; gap: 4px; flex: 0 0 auto; }
+  .btn-icon {
+    width: 36px; height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: var(--surface-2);
+    color: var(--text-2);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    transition: background .2s, color .2s;
+  }
+  .btn-icon .material-icons { font-size: 20px; }
+  .btn-icon.btn-edit:hover,
+  .btn-icon.btn-edit.demo-hover {
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+  }
+  .btn-icon.btn-danger:hover,
+  .btn-icon.btn-danger.demo-hover {
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+  }
+  .topbar.detail .btn-icon { background: transparent; color: var(--accent); }
+
+  /* ---- Bouton flottant (repris de .fab) ---- */
+  .fab {
+    position: absolute;
+    right: 20px;
+    bottom: 24px;
+    width: 60px; height: 60px;
+    border: none;
+    border-radius: 50%;
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(0,122,255,.45);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 30;
+    cursor: pointer;
+  }
+  .fab .material-icons { font-size: 30px; }
+
+  /* ---- État vide (repris de .empty) ---- */
+  .empty {
+    text-align: center;
+    padding: 80px 30px;
+    color: var(--text-2);
+  }
+  .empty .material-icons { font-size: 54px; opacity: .4; }
+  .empty p { font-size: 15px; margin: 12px 0 0; line-height: 1.4; }
+
+  /* ---- Détail : zone réservée aux futures listes/cartes ---- */
+  .board-canvas {
+    flex: 1;
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    overflow: hidden;
+  }
+  .ghost-column {
+    flex: 0 0 200px;
+    border: 2px dashed var(--separator);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 14px;
+  }
+  .ghost-column .material-icons { font-size: 40px; opacity: .4; }
+  .ghost-column small { font-size: 12px; opacity: .8; }
+  .ghost-column.faded { opacity: .45; }
+
+  /* ---- Popups (reprise de confirm-dialog.css) ---- */
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0,0,0,.35);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .dialog-card {
+    width: 100%;
+    max-width: 320px;
+    background: var(--surface);
+    color: var(--text);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-pop);
+    padding: 24px 20px 16px;
+    text-align: center;
+  }
+  .dialog-title { margin: 0 0 16px; font-size: 18px; font-weight: 700; }
+  .dialog-message { margin: 0 0 20px; font-size: 16px; line-height: 1.4; }
+
+  /* Champ nom du tableau (style aligné sur .search) */
+  .field { text-align: left; margin-bottom: 20px; }
+  .field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-2);
+    margin: 0 0 6px 4px;
+  }
+  .field input {
+    width: 100%;
+    border: 2px solid transparent;
+    outline: none;
+    background: var(--surface-2);
+    color: var(--text);
+    border-radius: 12px;
+    padding: 11px 12px;
+    font-size: 16px;
+  }
+  .field input:focus,
+  .field input.demo-focus { border-color: var(--accent); }
+  .field .hint { margin: 6px 0 0 4px; font-size: 12px; color: var(--text-2); }
+  .field.invalid input { border-color: var(--danger); }
+  .field.invalid .hint { color: var(--danger); }
+
+  .dialog-actions { display: flex; gap: 10px; }
+  .btn {
+    flex: 1;
+    min-height: 44px;
+    padding: 11px 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-cancel { background: var(--separator); color: var(--text); }
+  .btn-confirm { background: var(--accent); color: #fff; }
+  /* Validation désactivée tant que le nom est vide (US2) */
+  .btn-confirm:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ---- Notes de conception sous chaque écran ---- */
+  .notes {
+    width: 375px;
+    max-width: calc(100vw - 56px);
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+</style>
+</head>
+<body>
+
+  <h2 class="board-title">Maquette — Page CRUD « Mes Kanbans »</h2>
+  <p class="board-sub">
+    Styles repris de la page « Mes Notes » (note-list.css) et de la popup ConfirmDialog.
+    Chaque écran correspond à une user story de FEATURE_KANBAN_CRUD.md.
+  </p>
+
+  <div class="screens">
+
+    <!-- ========== Écran 1 : liste des tableaux (US1) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US1</b> · Liste des tableaux</span>
+      <div class="phone">
+        <header class="topbar">
+          <h1>Mes Kanbans</h1>
+          <p class="count">4 tableaux</p>
+        </header>
+
+        <div class="list">
+          <article class="board-card" style="--c:var(--c-vert)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body">
+              <h3 class="board-name">Courses de la semaine</h3>
+              <span class="board-date">Modifié aujourd'hui</span>
+            </div>
+            <div class="actions">
+              <button class="btn-icon btn-edit" aria-label="Renommer"><span class="material-icons">edit</span></button>
+              <button class="btn-icon btn-danger" aria-label="Supprimer"><span class="material-icons">delete_outline</span></button>
+            </div>
+          </article>
+
+          <article class="board-card" style="--c:var(--c-orange)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body">
+              <h3 class="board-name">Travaux de la maison</h3>
+              <span class="board-date">Modifié hier</span>
+            </div>
+            <div class="actions">
+              <button class="btn-icon btn-edit" aria-label="Renommer"><span class="material-icons">edit</span></button>
+              <button class="btn-icon btn-danger" aria-label="Supprimer"><span class="material-icons">delete_outline</span></button>
+            </div>
+          </article>
+
+          <article class="board-card" style="--c:var(--c-violet)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body">
+              <h3 class="board-name">Vacances d'été</h3>
+              <span class="board-date">Modifié le 24/09/2026</span>
+            </div>
+            <div class="actions">
+              <button class="btn-icon btn-edit" aria-label="Renommer"><span class="material-icons">edit</span></button>
+              <button class="btn-icon btn-danger" aria-label="Supprimer"><span class="material-icons">delete_outline</span></button>
+            </div>
+          </article>
+
+          <article class="board-card" style="--c:var(--c-bleu)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body">
+              <h3 class="board-name">Rentrée scolaire</h3>
+              <span class="board-date">Modifié le 02/09/2026</span>
+            </div>
+            <div class="actions">
+              <button class="btn-icon btn-edit" aria-label="Renommer"><span class="material-icons">edit</span></button>
+              <button class="btn-icon btn-danger" aria-label="Supprimer"><span class="material-icons">delete_outline</span></button>
+            </div>
+          </article>
+        </div>
+
+        <button class="fab" aria-label="Nouveau tableau"><span class="material-icons">add</span></button>
+      </div>
+      <ul class="notes">
+        <li>Tri du plus récent au plus ancien.</li>
+        <li>Toucher la carte ouvre le tableau (US3) ; le crayon et la corbeille n'ouvrent pas la carte.</li>
+        <li>La couleur d'accent vient du nom du tableau (comme pour la catégorie d'une note).</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 2 : création (US2) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US2</b> · Nouveau tableau</span>
+      <div class="phone">
+        <header class="topbar">
+          <h1>Mes Kanbans</h1>
+          <p class="count">4 tableaux</p>
+        </header>
+        <div class="list">
+          <article class="board-card" style="--c:var(--c-vert)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body"><h3 class="board-name">Courses de la semaine</h3><span class="board-date">Modifié aujourd'hui</span></div>
+          </article>
+          <article class="board-card" style="--c:var(--c-orange)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body"><h3 class="board-name">Travaux de la maison</h3><span class="board-date">Modifié hier</span></div>
+          </article>
+        </div>
+
+        <div class="backdrop">
+          <div class="dialog-card" role="dialog" aria-modal="true">
+            <h2 class="dialog-title">Nouveau tableau</h2>
+            <div class="field invalid">
+              <label for="new-name">Nom du tableau</label>
+              <input id="new-name" type="text" value="" placeholder="Ex. : Anniversaire de Léa" class="demo-focus">
+              <p class="hint">Le nom est obligatoire.</p>
+            </div>
+            <div class="dialog-actions">
+              <button class="btn btn-cancel">Annuler</button>
+              <button class="btn btn-confirm" disabled>Créer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Ouverte par le bouton « + ».</li>
+        <li>« Créer » reste grisé tant que le nom est vide ou ne contient que des espaces.</li>
+        <li>Les espaces au début et à la fin sont retirés à l'enregistrement.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 3 : modification (US4) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US4</b> · Renommer</span>
+      <div class="phone">
+        <header class="topbar">
+          <h1>Mes Kanbans</h1>
+          <p class="count">4 tableaux</p>
+        </header>
+        <div class="list">
+          <article class="board-card" style="--c:var(--c-vert)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body"><h3 class="board-name">Courses de la semaine</h3><span class="board-date">Modifié aujourd'hui</span></div>
+          </article>
+          <article class="board-card" style="--c:var(--c-orange)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body"><h3 class="board-name">Travaux de la maison</h3><span class="board-date">Modifié hier</span></div>
+          </article>
+        </div>
+
+        <div class="backdrop">
+          <div class="dialog-card" role="dialog" aria-modal="true">
+            <h2 class="dialog-title">Renommer le tableau</h2>
+            <div class="field">
+              <label for="edit-name">Nom du tableau</label>
+              <input id="edit-name" type="text" value="Travaux de la maison" class="demo-focus">
+            </div>
+            <div class="dialog-actions">
+              <button class="btn btn-cancel">Annuler</button>
+              <button class="btn btn-confirm">Enregistrer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Même popup qu'à la création, pré-remplie avec le nom actuel.</li>
+        <li>Ouverte par le crayon d'une carte ou depuis l'écran de détail.</li>
+        <li>« Annuler » ne modifie rien.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 4 : suppression confirmée (US5) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US5</b> · Suppression</span>
+      <div class="phone">
+        <header class="topbar">
+          <h1>Mes Kanbans</h1>
+          <p class="count">4 tableaux</p>
+        </header>
+        <div class="list">
+          <article class="board-card" style="--c:var(--c-vert)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body"><h3 class="board-name">Courses de la semaine</h3><span class="board-date">Modifié aujourd'hui</span></div>
+          </article>
+          <article class="board-card" style="--c:var(--c-violet)">
+            <span class="board-glyph"><span class="material-icons">view_kanban</span></span>
+            <div class="card-body"><h3 class="board-name">Vacances d'été</h3><span class="board-date">Modifié le 24/09/2026</span></div>
+            <div class="actions">
+              <button class="btn-icon btn-danger demo-hover" aria-label="Supprimer"><span class="material-icons">delete_outline</span></button>
+            </div>
+          </article>
+        </div>
+
+        <!-- Composant ConfirmDialog existant, sans changement -->
+        <div class="backdrop">
+          <div class="dialog-card" role="alertdialog" aria-modal="true">
+            <p class="dialog-message">Supprimer le tableau « Vacances d'été » ?</p>
+            <div class="dialog-actions">
+              <button class="btn btn-cancel">Annuler</button>
+              <button class="btn btn-confirm">Confirmer</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Réutilise tel quel le composant <code>app-confirm-dialog</code> des notes.</li>
+        <li>Toucher « Annuler » ou à côté de la popup la ferme sans rien supprimer.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 5 : détail d'un tableau (US3) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US3</b> · Consultation</span>
+      <div class="phone">
+        <header class="topbar detail">
+          <button class="btn-back"><span class="material-icons">chevron_left</span>Kanbans</button>
+          <h1>Travaux de la maison</h1>
+          <button class="btn-icon" aria-label="Renommer"><span class="material-icons">edit</span></button>
+        </header>
+
+        <div class="board-canvas">
+          <div class="ghost-column">
+            <span class="material-icons">view_column</span>
+            Ce tableau est vide.
+            <small>Les listes et les cartes arriveront dans un prochain lot.</small>
+          </div>
+          <div class="ghost-column faded"></div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Route <code>/kanban/:id</code> ; « Kanbans » ramène à la liste.</li>
+        <li>La zone en pointillés est réservée aux futures listes, avec défilement horizontal.</li>
+        <li>Si l'identifiant est inconnu, retour à la liste.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 6 : état vide (US1) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US1</b> · Aucun tableau</span>
+      <div class="phone">
+        <header class="topbar">
+          <h1>Mes Kanbans</h1>
+          <p class="count">Aucun tableau</p>
+        </header>
+        <div class="list">
+          <div class="empty">
+            <span class="material-icons">view_kanban</span>
+            <p>Aucun tableau pour l'instant.<br>Touchez « + » pour en créer un.</p>
+          </div>
+        </div>
+        <button class="fab" aria-label="Nouveau tableau"><span class="material-icons">add</span></button>
+      </div>
+      <ul class="notes">
+        <li>Les états chargement (spinner) et erreur (« Réessayer ») sont les mêmes que sur « Mes Notes ».</li>
+      </ul>
+    </section>
+
+  </div>
+
+</body>
+</html>
