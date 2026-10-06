@@ -1,0 +1,112 @@
+/* Conteneur principal du composant.
+   `position: relative` : la liste déroulante est en `position: absolute` et n'est pas dans
+   `.input-wrapper` — sans ancrage ici, elle se positionne sur un ancêtre arbitraire de la page. */
+.category-selector-container {
+  display: block;
+  position: relative;
+  width: 100%;
+}
+
+/* Wrapper de l'input pour le positionnement relatif du dropdown */
+.input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+/* Style de l'input de texte */
+.category-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease-in-out, box-shadow 0.2s;
+  background-color: #fff;
+}
+
+.category-input:focus {
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+/* Liste déroulante (le menu qui apparaît) */
+.category-list-container {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background-color: #ffffff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  margin-top: 4px;
+  max-height: 250px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+/* Style de la liste des cat�gories */
+.category-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.category-list li {
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  font-size: 14px;
+  color: #333;
+}
+
+.category-list li:hover {
+  background-color: #f8f9fa;
+}
+
+.category-list li.selected {
+  background-color: #e9ecef;
+  font-weight: 600;
+  color: #000;
+}
+
+/* Palette de couleurs (Popup) */
+.color-palette {
+  position: absolute;
+  right: 0;
+  top: 40px;
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 1001;
+}
+
+.palette-item {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid #eee;
+  cursor: pointer;
+  transition: transform 0.1s;
+}
+
+.palette-item:hover {
+  transform: scale(1.2);
+}
+
+.color-dot {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-left: 8px;
+  border: 1px solid #ddd;
+}

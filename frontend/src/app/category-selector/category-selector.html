@@ -1,0 +1,67 @@
+<div class="category-selector-container">
+  <div class="input-wrapper">
+    <input
+      type="text"
+      [placeholder]="placeholder()"
+      [value]="draft()"
+      (focus)="onFocus()"
+      (blur)="onBlur()"
+      (input)="onInput($event)"
+      class="category-input"
+      [style.border-color]="color() || '#ccc'"
+    />
+    
+    <button 
+      type="button" 
+      class="color-picker-btn" 
+      (click)="toggleColorPopup()"
+      [title]="'Choisir une couleur'"
+    >
+      <span class="color-dot" [style.background-color]="color() || '#ccc'"></span>
+    </button>
+
+    <!-- Palette de couleurs (Popup) -->
+    @if (colorPopupOpen()) {
+      <div 
+        class="color-palette"
+        (click)="$event.stopPropagation()"
+      >
+        @for (c of colorPalette; track $index) {
+          <button
+            class="palette-item"
+            (click)="pickColor(c)"
+            [style.background-color]="c"
+          ></button>
+        }
+      </div>
+    }
+  </div>
+
+  <!-- Liste déroulante -->
+  @if (isOpen()) {
+    <div 
+      class="category-list-container"
+      (click)="$event.stopPropagation()"
+    >
+      <ul class="category-list">
+        @for (cat of filteredCategories(); track cat.id) {
+          <li 
+            (click)="onPick(cat)"
+            [class.selected]="cat.name.toLowerCase() === draft().toLowerCase()"
+          >
+            {{ cat.name }}
+          </li>
+        }
+
+        <!--@if (filteredCategories().length === 0 && draft() && !exactMatch()) {
+          <li 
+            class="create-option"
+            (click)="onPick({ name: draft(), id: 'new-' + Date.now() })"
+          >
+            + Créer "{{ draft() }}"
+          </li>
+        }-->
+      </ul>
+    </div>
+  }
+</div>

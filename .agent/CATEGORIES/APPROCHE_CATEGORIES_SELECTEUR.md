@@ -34,9 +34,7 @@ classDiagram
     class Note {
         +string id
         +string title
-        +string category
-        +string categoryName?
-        +string categoryColor?
+        +Category category
         +NoteBlock[] blocks
         +string updatedAt
     }
@@ -52,7 +50,7 @@ classDiagram
         <<union: TextBlock | ImageBlock | VideoBlock>>
     }
 
-    %% ---------- Types énumérés / littéraux ----------
+    %% ---------- Types énumés / littéraux ----------
     class CATEGORY_COLOR_PALETTE {
         <<const : string[]>>
         10 couleurs prédéfinies
@@ -184,73 +182,48 @@ classDiagram
 
 ## 3. Approche de développement
 
-### Lot 1 — Modèle de données & migration (D-C1, D-C3, D-C5)
+#### Lot 1 — Modèle de données & migration
+*   **Au lancement de l'application (Migration automatique) :**
+    *   Vérifier si la table des catégories existe dans la base de données.
+    *   Si la table est nouvelle et qu'il existe des notes avec des noms de catégories textuels :
+        *   Récupérer la liste de tous les noms de catégories uniques présents dans les notes.
+        *   Pour chaque nom trouvé :
+            *   Créer une nouvelle entrée dans la table `categories` avec un identifiant unique.
+            *   Mettre à jour les notes concernées pour remplacer le nom par l'identifiant de la catégorie.
+    *   Enregistrer ces modifications pour que la migration ne se relance plus au prochain démarrage.
+*   **En parallèle (Mise à jour des outils de développement) :**
+    *   Mettre à jour `scripts/schema_notes.sql` pour refléter le nouveau modèle.
+    *   Générer un nouveau seed contenant déjà la table `categories` et les notes avec leurs nouveaux IDs.
 
-**Entrées :** base seedée `family_notesSQLite.db` (table `notes(id, title, content, category TEXT, updated_at)`).
-**Sorties :** table `categories(id TEXT PK, name TEXT UNIQUE NOT NULL, color TEXT)`, `notes.category` réécrit avec des id. **Invariant :** après migration, toute valeur non vide de `notes.category` référence une ligne de `categories`.
+#### Lot 2 — Service des catégories (`CategoriesService`)
+*   **Récupération des catégories :** Consulter la table et renvoyer la liste triée par nom.
+*   **Recherche par nom :** Prendre le nom saisi, enlever les espaces inutiles, et chercher une correspondance sans tenir compte de la casse.
+*   **Création de catégorie :** Générer un nouvel identifiant unique et enregistrer le nom et la couleur.
+*   **Gestion de l'existence (Autocréation) :** Chercher si le nom existe ; si oui, retourner la catégorie existante ; sinon, en créer une nouvelle.
+*   **Mise à jour de la couleur :** Associer une nouvelle couleur à l'identifiant d'une catégorie existante.
 
-Algorithme de `migrateSchema()` (exécuté **une fois** à l'initialisation de `CategoriesService`, après `ready` — dans l'esprit du garde `ready` existant) :
+#### Lot 3 — Lecture des notes enrichie (`NotesService`)
+*   **Enrichissement des données :** Lors de la récupération d'une note (ou d'une liste de notes), effectuer une jointure avec la table des catégories pour récupérer le nom et la couleur associés à l'ID stocké dans la note.
+*   **Mapping :** Transformer les données brutes (ID) en propriétés lisibles pour via l'interface Category qui sera attachée à l'interface Note à la place du categoryName et du categoryColor, sans modifier les données stockées en base.
 
-1. `CREATE TABLE IF NOT EXISTS categories (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, color TEXT)` ;
-   `CREATE UNIQUE INDEX IF NOT EXISTS idx_categories_name_nocase ON categories(name COLLATE NOCASE)`.
-2. Détecter le besoin de migration : `PRAGMA user_version` (ou compte de lignes de `categories`) — si la table vient d'être créée **et** qu'il existe des notes avec `category <> ''` :
-   1. `SELECT DISTINCT TRIM(category) AS name FROM notes WHERE TRIM(category) <> ''` ;
-   2. pour chaque nom : `INSERT OR IGNORE INTO categories (id, name) VALUES (uuid, name)` — `INSERT OR IGNORE` absorbe les collisions NOCASE (D-C5) ;
-   3. `UPDATE notes SET category = (SELECT c.id FROM categories c WHERE c.name = notes.category COLLATE NOCASE)` ; re-vérifier qu'aucune valeur non vide ne reste orpheline (fail-safe : log + repli en `NULL`/`''`).
-3. `persist()` (flush web, pattern existant).
-4. Cas limites : base déjà migrée (no-op) ; `notes.category` vide (pas de catégorie — reste vide) ; échec SQL → log via `runQuery` et **ne pas** bloquer l'app (l'éditeur affiche la liste vide).
+#### Lot 4 — Composant de sélection (`CategorySelector`)
+*   **Ouverture de la liste :** Lorsqu'on clique dans le champ, afficher une liste déroulante contenant toutes les catégories disponibles.
+*   **Filtrage dynamique :** Pendant la saisie, filtrer la liste pour n'afficher que les catégories correspondant au texte saisi.
+*   **Option de création :** Si le texte saisi ne correspond à aucune catégorie, proposer l'option « Créer "[texte saisi]" ».
+*   **Sélection :** Lors du clic sur un élément de la liste, remplir le champ avec le nom et fermer la liste.
+*   **Personnalisation visuelle :** Permettre l'ouverture d'une palette de couleurs pour changer l'apparence du champ de saisie.
 
-En parallèle : mettre à jour `scripts/schema_notes.sql` (référence) et générer un nouveau seed `family_notesSQLite.db` contenant déjà la table `categories` vide + les notes au **nouveau** format (id) — sinon le premier lancement web appliquera la migration à la volée, ce qui est le comportement attendu.
+#### Lot 5 — Intégration dans l'éditeur (`NoteEditor`)
+*   **Chargement initial :** Charger la liste des catégories et la catégorie associée à la note.
+*   **Gestion de la saisie :** Permettre la sélection d'une catégorie existante ou la saisie d'un nouveau nom.
+*   **Mémorisation de la couleur :** Si une nouvelle catégorie est en cours de création, mémoriser la couleur choisie pour l'appliquer lors de l'enregistrement.
+*   **Processus d'enregistrement :**
+    *   Transformer le texte saisi en un identifiant de catégorie (en créant la catégorie si nécessaire).
+    *   Enregistrer la note avec cet identifiant.
+    *   Mettre à jour la couleur de la catégorie si elle a été modifiée.
 
-### Lot 2 — `CategoriesService` (D-C2, D-C5)
-
-**Entrées :** noms/coloris saisis. **Sorties :** `Category[]`, `Category`. **Invariant :** jamais deux catégories normalisées identiques.
-
-1. `getAllCategories()` : `SELECT * FROM categories ORDER BY name COLLATE NOCASE` → `Category[]` (`mapRowToCategory`, camelCase).
-2. `findByName(name)` : normaliser (trim) puis `SELECT … WHERE name = ? COLLATE NOCASE` → `Category?`.
-3. `create(name, color?)` : `INSERT` avec `id = crypto.randomUUID()` ; cas limite : collision NOCASE concurrente → attraper l'erreur d'unicité, re-relire via `findByName` (idempotent).
-4. `getOrCreate(name, color?)` : `findByName` → si trouvée, retour ; sinon `create` (US3). C'est **le** point d'entrée de l'autocréation.
-5. `setColor(id, color)` : `UPDATE categories SET color = ? WHERE id = ?` + `persist()` (US4 persistance).
-6. Réutiliser `runQuery` / `persist` de `SqliteService` — pas de nouvelle plomberie.
-
-### Lot 3 — Lecture des notes enrichie (`NotesService`)
-
-**Entrées :** requêtes existantes. **Sorties :** `Note` enrichi.
-
-1. `getAllNotes` / `getNoteById` : passer sur
-   `SELECT n.*, c.name AS category_name, c.color AS category_color FROM notes n LEFT JOIN categories c ON n.category = c.id …`
-2. `mapRowToNote` : mapper `category_name` → `categoryName?`, `category_color` → `categoryColor?` (non persistés, récomputés à chaque lecture — source de vérité = table `categories`).
-3. `createNote` / `updateNote` : inchangés côté SQL (`category` = id fourni par l'éditeur) ; `Note.category` dans le retour = id.
-4. Cas limite : id de catégorie orphelin (DELETE possible plus tard) → LEFT JOIN rend `NULL`, l'UI affiche la chaîne vide et la couleur par défaut.
-
-### Lot 4 — Composant `CategorySelector` (US1, US2, US4 visuel)
-
-Composant **standalone, signal-based** (conventions `note-editor`). État : `isOpen`, `colorPopupOpen`, signals d'entrée `categories`, `draft`, `color`.
-
-1. **Ouverture (US1)** : `onFocus` → `isOpen = true` (liste complète) ; clic sur un item → `selected.emit(cat)` + `draftChange.emit(cat.name)` + `isOpen = false`.
-2. **Filtrage (US2)** : `filteredCategories = computed(() => categories.filter(c => c.name.toLowerCase().includes(draft().toLowerCase())))` — substring, casse-insensible ; liste vide → texte « Aucune catégorie trouvée ».
-3. **Indicateur de création (US3)** : `exactMatch = computed(() => normalisé(draft) correspond à une catégorie existante)` ; si faux et `draft` non vide, afficher « Créer “<draft>” » (cliquable) — la création effective reste à l'enregistrement (D-C4).
-4. **Fermeture** : `onBlur` (avec délai `setTimeout(0)` pour laisser le click de la liste se déclencher) ou `Escape` ; clic hors composant (overlay ou listener document) — à figer à l'implémentation.
-5. **Couleur (US4)** : petit bouton à droite du champ (swatch) → `colorPopupOpen = true` ; popup palette `CATEGORY_COLOR_PALETTE` ; `pickColor` émet la couleur au parent (via output `colorPicked`), ferme la popup ; le bloc entourant l'input porte la couleur via un binding `[style.--category-color]`. Entrées clavier (flèches + Entrée dans la popup) optionnelles, hors périmètre strict.
-
-### Lot 5 — Intégration dans `NoteEditor` (US3, US4)
-
-1. `ngOnInit` : en plus du chargement de la note, `loadCategories()` (`CategoriesService.getAllCategories`) → signal `categories`.
-2. État catégorie : `selectedCategory = signal<Category | null>(null)` (catégorie chargée de la note) + `categoryDraft = signal('')` (texte libre tapé). La couleur affichée = `selectedCategory()?.color`.
-3. `onCategorySelected(cat)` : pose `selectedCategory` + `categoryDraft = cat.name`.
-4. `onCategoryColorPicked(color)` : si `selectedCategory` existe → `CategoriesService.setColor(id, color)` puis rafraîchir les signaux ; si aucune catégorie sélectionnée (nouvelle) → mémoriser la couleur en attente (`pendingColor`) pour l'appliquer à la création à l'enregistrement.
-5. `onSave()` : avant `createNote`/`updateNote` :
-   1. `draft = categoryDraft().trim()` ;
-   2. si vide → `categoryId = ''` ;
-   3. sinon `cat = await categoriesService.getOrCreate(draft, pendingColor)` ; si `selectedCategory` existante et couleur changée → `setColor` ; `categoryId = cat.id` ;
-   4. poursuivre le flux existant (`updateNote` / `createNote`), rafraîchir `categories` avant navigation.
-6. Cas limites : échec de `getOrCreate` → rester sur l'éditeur avec message (pattern D4 existant : pas de navigation) ; note en édition dont la catégorie a un id orphelin → `selectedCategory = null` mais `categoryDraft` prérempli avec `categoryName` résolu.
-
-### Lot 6 — `NoteList` (affichage)
-
-1. Remplacer le tintage déterministe `accentColorFor` par : `note.categoryColor ?? accentColorFor(note)` (repli inchangé si pas de couleur).
-2. Afficher `note.categoryName ?? ''` à la place de `note.category` (qui est désormais un id opaque).
-3. Filtrage par catégorie (recherche) : filtrer sur `categoryName`.
+#### Lot 6 — Affichage dans la liste (`NoteList`)
+*   **Affichage enrichi :** Utiliser le nom et la couleur de la catégorie pour l'affichage des cartes de notes dans la liste, au lieu de l'identifiant technique.
 
 ---
 
@@ -259,7 +232,7 @@ Composant **standalone, signal-based** (conventions `note-editor`). État : `isO
 - **Migration irréversible des données seedées** : après migration, `notes.category` contient des id — tout code qui suppose que c'est un nom doit être audité (`note-list.ts` lignes 65, 103 ; `note-list.html` ligne 41 ; specs `note-list.spec.ts`, `notes-service.spec.ts`). C'est le **principal risque de régression**.
 - **Seed** : régénérer `frontend/public/assets/databases/family_notesSQLite.db` (table `categories` + notes au format id) ou laisser la migration runtime faire le travail — à trancher à l'implémentation, mais **tester la migration runtime est obligatoire** (chemin web `jeep-sqlite` + chemin natif).
 - **`user_version`** : utiliser `PRAGMA user_version` pour rendre la migration idempotente et rejouable sans coûter une lecture de plus à chaque lancement.
-- **NOCASE et doublons** : l'index `UNIQUE … COLLATE NOCASE` rend l'insertion en doublon impossible au niveau SQL ; `getOrCreate` doit rester idempotent sous concurrence (relecture après échec d'INSERT).
+- **NOCASE et doublons** : الindex `UNIQUE … COLLATE NOCASE` rend l'insertion en doublon impossible au niveau SQL ; `getOrCreate` doit rester idempotent sous concurrence (relecture après échec d'INSERT).
 - **Dépendances entre lots** : 1 → 2 → 3 → (4 ∥ 5) → 6 ; le lot 6 casse l'affichage si le lot 3 n'est pas fait.
 - **`saveNote` legacy** : opportunité de le supprimer/fusionner (mémoire projet) mais **hors périmètre** — ne pas y toucher dans ce lot.
 - **Tests existants à mettre à jour** : `notes-service.spec.ts` (JOIN), `note-list.spec.ts` (fixtures `category` = id + `categoryName`), `note-editor.spec.ts` (double service).
@@ -275,4 +248,4 @@ Ordre de réalisation (chaque lot est testable indépendamment — alimentera `p
 5. **Lot 5** — intégration `NoteEditor` (bout en bout US1–US4).
 6. **Lot 6** — `NoteList` (affichage nom + couleur).
 
-**Hors périmètre (rappel SPEC) :** sous-catégories ; interface dédiée de modification/suppression de catégories ; suppression en cascade des catégories devenues orphelines ; éditeur de couleurs dans un menu de configuration.
+**Hors périmètre (rappel SPEC) :** sous-catégories ; interface dédiée de modification/suppression de catégories ; suppression en cascade des catégories devenues orphelines ; éditor de couleurs dans un menu de configuration.

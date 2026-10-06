@@ -27,15 +27,16 @@
         />
 
         <div class="editor-category-field">
-          <label class="editor-category-label" for="note-category">Catégorie</label>
-          <input
-            id="note-category"
-            type="text"
-            class="editor-category"
-            [value]="category()"
-            (input)="category.set($any($event.target).value)"
+          <label class="editor-category-label">Catégorie</label>
+          <app-category-selector
+            [categories]="categories()"
+            [draft]="category()"
+            [color]="categoryColor()"
             placeholder="Aucune"
-          />
+            (draftChange)="onCategoryDraftChange($event)"
+            (colorChange)="categoryColor.set($event)"
+            (selected)="onCategorySelected($event)"
+          ></app-category-selector>
         </div>
       </div>
 

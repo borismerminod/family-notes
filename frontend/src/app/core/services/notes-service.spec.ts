@@ -2,8 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { NotesService } from './notes-service';
-import { Note } from '../models';
+import { DatabaseService } from './database.service';
+import {CategoriesService} from './categories.service'
+import { Category, Note } from '../models';
 import { NoteBlock } from '../models/document.model';
+
 
 /**
  * Contrat CIBLE du service (TDD) — version **blocks** (cf. .agent/PLAN_TESTS_NOTES_SERVICE_BLOCKS.md).
@@ -16,9 +19,9 @@ type NoteUpdate = Omit<Note, 'updatedAt'>;
 
 interface NotesServiceContract {
   getAllNotes(): Promise<Note[]>;
-  getNoteById(id: string): Promise<Note | undefined>;
-  createNote(draft: NoteDraft): Promise<Note>;
-  updateNote(note: NoteUpdate): Promise<void>;
+  getNoteById(id: string): Promise<Note | null>;
+  createNote(draft: NoteDraft, categoryName : (string | null)): Promise<Note>;
+  updateNote(note: NoteUpdate, categoryName: (string | null)): Promise<void>;
   deleteNote(id: string): Promise<void>;
 }
 
@@ -33,27 +36,12 @@ const mocks = vi.hoisted(() => {
     run: vi.fn(),
     query: vi.fn(),
   };
-  const sqliteConnection = {
-    createConnection: vi.fn(),
-    retrieveConnection: vi.fn(),
-    closeConnection: vi.fn(),
-    isConnection: vi.fn(),
-    isDatabase: vi.fn(),
-    copyFromAssets: vi.fn(),
-    initWebStore: vi.fn(),
-    saveToStore: vi.fn(),
-    checkConnectionsConsistency: vi.fn(),
+  /** Double du service qui porte la connexion : aucun plugin Capacitor n'est touché ici. */
+  const database = {
+    connect: vi.fn(),
+    persist: vi.fn(),
   };
-  return { dbConnection, sqliteConnection };
-});
-
-vi.mock('@capacitor-community/sqlite', () => {
-  class SQLiteConnection {
-    constructor() {
-      return mocks.sqliteConnection as unknown as SQLiteConnection;
-    }
-  }
-  return { CapacitorSQLite: {}, SQLiteConnection };
+  return { dbConnection, database };
 });
 
 // ---------------------------------------------------------------------------
@@ -68,15 +56,17 @@ function dbRow(overrides: Record<string, unknown> = {}): Record<string, unknown>
     id: '550e8400-0001',
     title: 'Liste de courses',
     content: CONTENT_JSON,
-    category: 'Personnel',
+    category_id: 'cat-uuid-1',
+    category_name: 'Personnel',
+    category_color: '#ffffff',
     updated_at: '2026-09-01 08:00:00',
   };
   return { ...base, ...overrides };
 }
 
-const ROW_A = dbRow({ id: 'id-a', title: 'Note A', category: 'Personnel', updated_at: '2026-09-03 10:00:00' });
-const ROW_B = dbRow({ id: 'id-b', title: 'Note B', category: 'Travail', updated_at: '2026-09-02 09:00:00' });
-const ROW_C = dbRow({ id: 'id-c', title: 'Note C', category: 'Famille', updated_at: '2026-09-01 08:00:00' });
+const ROW_A = dbRow({ id: 'id-a', title: 'Note A', category_id: 'cat-a', category_name: 'Personnel', category_color: '#ff0000', updated_at: '2026-09-03 10:00:00' });
+const ROW_B = dbRow({ id: 'id-b', title: 'Note B', category_id: 'cat-b', category_name: 'Travail', category_color: '#00ff00', updated_at: '2026-09-02 09:00:00' });
+const ROW_C = dbRow({ id: 'id-c', title: 'Note C', category_id: 'cat-c', category_name: 'Famille', category_color: '#0000ff', updated_at: '2026-09-01 08:00:00' });
 const SAMPLE_ROWS = [ROW_A, ROW_B, ROW_C];
 
 describe('NotesService (accès SQLite, modèle blocks)', () => {
@@ -93,17 +83,12 @@ describe('NotesService (accès SQLite, modèle blocks)', () => {
     mocks.dbConnection.run.mockReset().mockResolvedValue({ changes: { changes: 1, lastId: 1 } });
     mocks.dbConnection.query.mockReset().mockResolvedValue({ values: [] });
 
-    mocks.sqliteConnection.createConnection.mockReset().mockResolvedValue(mocks.dbConnection);
-    mocks.sqliteConnection.retrieveConnection.mockReset().mockResolvedValue(mocks.dbConnection);
-    mocks.sqliteConnection.closeConnection.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.isConnection.mockReset().mockResolvedValue({ result: false });
-    mocks.sqliteConnection.isDatabase.mockReset().mockResolvedValue({ result: true });
-    mocks.sqliteConnection.copyFromAssets.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.initWebStore.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.saveToStore.mockReset().mockResolvedValue(undefined);
-    mocks.sqliteConnection.checkConnectionsConsistency.mockReset().mockResolvedValue({ result: false });
+    mocks.database.connect.mockReset().mockResolvedValue(mocks.dbConnection);
+    mocks.database.persist.mockReset().mockResolvedValue(undefined);
 
-    TestBed.configureTestingModule({});
+    TestBed.configureTestingModule({
+      providers: [{ provide: DatabaseService, useValue: mocks.database }],
+    });
     service = TestBed.inject(NotesService) as unknown as NotesServiceContract;
   });
 
@@ -134,7 +119,7 @@ describe('NotesService (accès SQLite, modèle blocks)', () => {
 
       expect(first.id).toBe('id-a');
       expect(first.title).toBe('Note A');
-      expect(first.category).toBe('Personnel');
+      expect(first.category!.name).toBe('Personnel');
       expect(first.updatedAt).toBe('2026-09-03 10:00:00');
       const raw = first as unknown as Record<string, unknown>;
       expect(raw['updated_at']).toBeUndefined();
@@ -177,12 +162,13 @@ describe('NotesService (accès SQLite, modèle blocks)', () => {
 
     it('renvoie undefined quand aucune note ne correspond', async () => {
       mocks.dbConnection.query.mockResolvedValue({ values: [] });
-      expect(await service.getNoteById('inconnu')).toBeUndefined();
+      expect(await service.getNoteById('inconnu')).toBeNull();
     });
 
     it('transmet l’identifiant en paramètre lié', async () => {
       mocks.dbConnection.query.mockResolvedValue({ values: [ROW_C] });
       await service.getNoteById('id-c');
+      console.log("TEST BOBO", allQueryParams())
       expect(allQueryParams()).toContain('id-c');
     });
   });
@@ -192,23 +178,26 @@ describe('NotesService (accès SQLite, modèle blocks)', () => {
   // -------------------------------------------------------------------------
   describe('createNote', () => {
     const blocks: NoteBlock[] = [{ id: 'b1', kind: 'text', text: 'Bonjour', marks: [] }];
-    const input: NoteDraft = { title: 'Nouvelle note', category: 'Travail', blocks };
+    const category : Category = { id: 'cat-work', name: 'Travail' }
+    const input: NoteDraft = { title: 'Nouvelle note', category, blocks };
 
     it('déclenche un INSERT avec titre et catégorie (paramètres liés)', async () => {
-      await service.createNote(input);
+      const categories = TestBed.inject(CategoriesService); 
+      vi.spyOn(categories, 'get').mockResolvedValue(category);
+      await service.createNote(input, 'Travail');
       const params = allRunParams();
       expect(writeStatements()).toContain('insert');
       expect(params).toContain('Nouvelle note');
-      expect(params).toContain('Travail');
+      expect(params).toContain('cat-work');
     });
 
     it('transmet le JSON des blocs en paramètre lié de l’INSERT', async () => {
-      await service.createNote(input);
+      await service.createNote(input, null);
       expect(allRunParams()).toContain(JSON.stringify(blocks));
     });
 
     it('renvoie la note créée avec ses blocs et un id non vide', async () => {
-      const created = await service.createNote(input);
+      const created = await service.createNote(input, null);
       expect(created.title).toBe('Nouvelle note');
       expect(created.blocks).toEqual(blocks);
       expect(created.id.length).toBeGreaterThan(0);
@@ -220,15 +209,20 @@ describe('NotesService (accès SQLite, modèle blocks)', () => {
   // -------------------------------------------------------------------------
   describe('updateNote', () => {
     const blocks: NoteBlock[] = [{ id: 'b1', kind: 'text', text: 'MàJ', marks: [] }];
-    const updated: NoteUpdate = { id: 'id-a', title: 'Titre modifié', category: 'Personnel', blocks };
+    const category : Category = { id: 'cat-pers', name: 'Personnel', color:''}
+    const updated: NoteUpdate = { id: 'id-a', title: 'Titre modifié', category, blocks };
 
     it('déclenche un UPDATE ciblant le bon id avec le JSON des blocs', async () => {
-      await service.updateNote(updated);
+      const categories = TestBed.inject(CategoriesService); 
+      vi.spyOn(categories, 'get').mockResolvedValue(category);
+      
+      await service.updateNote(updated, 'Personnal');
       const params = allRunParams();
       expect(writeStatements()).toContain('update');
       expect(params).toContain('id-a');
       expect(params).toContain('Titre modifié');
       expect(params).toContain(JSON.stringify(blocks));
+      expect(params).toContain('cat-pers');
     });
   });
 

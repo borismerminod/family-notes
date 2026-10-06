@@ -113,21 +113,11 @@
   color: var(--text-2);
 }
 
-.editor-category {
+/* Le sélecteur de catégorie prend la place de l'ancien champ texte ; son apparence interne
+   (input, liste déroulante) est gérée par le composant lui-même. */
+.editor-category-field app-category-selector {
   flex: 1;
   min-width: 0;
-  border: none;
-  outline: none;
-  background: transparent;
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: 600;
-  padding: 0;
-}
-
-.editor-category::placeholder {
-  color: var(--text-2);
-  font-weight: 400;
 }
 
 /* ---- Éditeur de texte riche (toolbar + zone d'édition, composant dédié) ---- */

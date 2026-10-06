@@ -44,7 +44,7 @@ avancer.
 
 ## Étape 2 — Écrire le document d'approche dans `.agent`
 
-Fichier : `.agent/APPROCHE_<NOM>.md` (ex. `APPROCHE_PARTAGE_NOTE.md`). Structure obligatoire :
+Fichier : `.agent/APPROCHE_<NOM>.md` (ex. `APPROCHE_PARTAGE_NOTE.md`). Structure obligatoire:
 
 1. **En-tête** : titre, date (absolue), statut *(brouillon — à valider)*, référence à la
    SPEC (`FEATURE_<NOM>.md`) et aux docs complétés.
@@ -59,10 +59,9 @@ Fichier : `.agent/APPROCHE_<NOM>.md` (ex. `APPROCHE_PARTAGE_NOTE.md`). Structure
    - sections commentées (`%% ----`) pour regrouper (domaine / services / UI).
    - **Distinguer** ce qui existe déjà de ce qui est **à créer** (commentaire ou note sous
      le diagramme).
-3. **Approche de développement** : pour chaque partie à implémenter, décrire **l'algorithme**
-   à réaliser — en langage clair ou pseudo-code, pas en code final :
-   - **entrées / sorties**, structures manipulées, invariants ;
-   - **étapes** de l'algorithme (numérotées), **cas nominaux et cas limites/erreurs** ;
+3. **Approche de développement** : pour chaque partie à implémenter, décrire l'enchaînement des actions (utilisateur et système) de manière procédurale et lisible (style « interaction/réponse ») — en langage clair (pas de code final, mais mention des fonctions/services si nécessaire) :
+   - **Interaction utilisateur** (ex: 'Quand je fais X...') et **réponse du système** (ex: '-- Je fais Y...') ;
+   - **étapes** claires, **cas nominaux et cas limites/erreurs** ;
    - points d'intégration avec l'existant (quel service/méthode appeler, quoi étendre) ;
    - regrouper par **lot / responsabilité**, et relier chaque partie aux **user stories**
      de la SPEC qu'elle sert.
@@ -92,7 +91,7 @@ dans le `.md` :
 changé, résumer en une ligne ce qui a changé, et redemander si ça convient. **Ne pas** clore
 sans **accord explicite**. En mode plan : `ExitPlanMode` une fois le document stabilisé.
 
-## Étape 4 — Clôturer
+## Étape 4 — Clôture
 
 Une fois validé :
 - Passer le statut d'en-tête à *(validé le <date>)*.
