@@ -28,6 +28,14 @@ const SAMPLE: Kanban[] = [
   { id: 'k-oldest', name: 'Travaux de la maison', updatedAt: '2026-08-30T10:05:00.000Z' },
 ];
 
+/**
+ * Les deux phrases du message affiché quand aucun tableau n'existe. Elles sont vérifiées
+ * séparément : le gabarit est libre de les séparer par un `<br>`, comme la maquette, ce qui ne
+ * laisse aucune espace entre elles dans le texte du DOM.
+ */
+const EMPTY_LIST_MESSAGE = "Aucun tableau pour l'instant.";
+const EMPTY_LIST_CALL_TO_ACTION = 'Touchez « + » pour en créer un.';
+
 describe('KanbanList (page « Mes Kanbans »)', () => {
   let fixture: ComponentFixture<KanbanList>;
   let el: HTMLElement;
@@ -81,6 +89,34 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
   function textOf(selector: string): string {
     const found = el.querySelector(selector);
     return found?.textContent?.trim() ?? '';
+  }
+
+  /**
+   * Lit le texte d'un élément en neutralisant la mise en forme : espaces insécables ramenés à des
+   * espaces ordinaires, suites d'espaces et retours à la ligne réduits à un seul espace. Permet de
+   * vérifier un libellé sans figer la façon dont le gabarit le découpe (icône, `<br>`, indentation).
+   * @param selector Le sélecteur CSS cherché dans le gabarit de la page.
+   * @returns Le texte normalisé, espaces de bord retirés, ou une chaîne vide si l'élément est absent.
+   */
+  function normalizedTextOf(selector: string): string {
+    const found = el.querySelector(selector);
+    const raw = found?.textContent ?? '';
+    return raw.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Clique sur un élément de la page, puis attend que l'écran ait fini de se mettre à jour.
+   * @param selector Le sélecteur CSS de l'élément à cliquer.
+   * @throws Quand aucun élément ne correspond, ce qui signalerait un gabarit inattendu.
+   */
+  async function clickOn(selector: string): Promise<void> {
+    const target = el.querySelector<HTMLElement>(selector);
+    if (target === null) {
+      throw new Error(`Aucun élément « ${selector} » à cliquer.`);
+    }
+    target.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
   }
 
   /** @returns Les cartes de tableau affichées, dans l'ordre du DOM. */
@@ -165,6 +201,71 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
       const displayedNames = cardNames();
       const expectedNames = SAMPLE.map((kanban) => kanban.name);
 
+      expect(displayedNames).toEqual(expectedNames);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 7 — Liste vide et erreur de chargement
+  // ---------------------------------------------------------------------------
+  describe('Liste vide et erreur de chargement', () => {
+    /**
+     * Déclenche le chargement initial avec une source de données en échec, attend son rejet, puis
+     * rafraîchit le DOM.
+     */
+    async function renderError(): Promise<void> {
+      kanbanService.getAllKanbans.mockRejectedValue(new Error('source indisponible'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('T7.1 affiche le message d’invitation et aucune carte quand il n’y a aucun tableau', async () => {
+      await render([]);
+
+      const emptyShown = isShown('.empty');
+      const emptyMessage = normalizedTextOf('.empty');
+      const displayedCards = cards();
+
+      expect(emptyShown).toBe(true);
+      expect(emptyMessage).toContain(EMPTY_LIST_MESSAGE);
+      expect(emptyMessage).toContain(EMPTY_LIST_CALL_TO_ACTION);
+      expect(displayedCards.length).toBe(0);
+    });
+
+    it('T7.2 affiche une erreur et « Réessayer » quand le chargement échoue, sans chargement, liste ni message vide', async () => {
+      await renderError();
+
+      const errorShown = isShown('.error-state');
+      const errorMessage = normalizedTextOf('.error-state p');
+      const retryLabel = textOf('.btn-retry');
+      const spinnerShown = isShown('.spinner');
+      const listShown = isShown('.kanbans-list');
+      const displayedCards = cards();
+      const pageText = normalizedTextOf('.kanban-list-container');
+
+      expect(errorShown).toBe(true);
+      expect(errorMessage.length).toBeGreaterThan(0);
+      expect(retryLabel).toBe('Réessayer');
+      expect(spinnerShown).toBe(false);
+      expect(listShown).toBe(false);
+      expect(displayedCards.length).toBe(0);
+      expect(pageText).not.toContain(EMPTY_LIST_MESSAGE);
+    });
+
+    it('T7.3 relance le chargement au clic sur « Réessayer » et affiche la liste une fois la source rétablie', async () => {
+      await renderError();
+      kanbanService.getAllKanbans.mockResolvedValue(SAMPLE);
+
+      await clickOn('.btn-retry');
+
+      const loadAttempts = kanbanService.getAllKanbans.mock.calls.length;
+      const errorShown = isShown('.error-state');
+      const displayedNames = cardNames();
+      const expectedNames = SAMPLE.map((kanban) => kanban.name);
+
+      expect(loadAttempts).toBe(2);
+      expect(errorShown).toBe(false);
       expect(displayedNames).toEqual(expectedNames);
     });
   });

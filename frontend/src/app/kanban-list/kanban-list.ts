@@ -34,6 +34,8 @@ export class KanbanList implements OnInit {
   kanbans = signal<Kanban[]>([]);
   /** True while the boards are being loaded from the data source. */
   isLoading = signal<boolean>(false);
+  /** True when the last load attempt failed, which puts the page in its error state (US1). */
+  loadError = signal<boolean>(false);
 
   /**
    * Counts the boards for the subtitle of the top bar, the wording following the count: French
@@ -58,17 +60,19 @@ export class KanbanList implements OnInit {
 
   /**
    * Loads all boards from the data source into the list, raising the loading state for as long as
-   * the source has not answered. A failure is only logged for now; showing it on screen belongs to
-   * the load-error cases (groupe 7).
+   * the source has not answered. A failure puts the page in its error state, which offers the user
+   * a way to try again; each attempt starts by clearing the error of the previous one.
    * @returns A promise that resolves once the load attempt has completed (success or failure).
    */
   async loadKanbans(): Promise<void> {
     this.isLoading.set(true);
+    this.loadError.set(false);
     try {
       const kanbans = await this.kanbanService.getAllKanbans();
       this.kanbans.set(kanbans);
     } catch (err) {
       console.error('Erreur lors du chargement des kanbans', err);
+      this.loadError.set(true);
     } finally {
       this.isLoading.set(false);
     }

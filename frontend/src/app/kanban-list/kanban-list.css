@@ -121,3 +121,40 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ---- État vide ---- */
+.empty {
+  text-align: center;
+  padding: 80px 30px;
+  color: var(--text-2);
+}
+
+.empty .material-icons {
+  font-size: 54px;
+  opacity: .4;
+}
+
+.empty p {
+  font-size: 15px;
+  margin: 12px 0 0;
+  line-height: 1.4;
+}
+
+/* ---- État d'erreur de chargement ---- */
+.error-state .material-icons { color: var(--danger); }
+
+.btn-retry {
+  margin-top: 16px;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .1s ease, opacity .2s;
+}
+
+.btn-retry:active { transform: scale(0.96); }
+.btn-retry:hover { opacity: .92; }
