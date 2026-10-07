@@ -1,5 +1,6 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
 import { Kanban } from '../core/models/kanban.model';
 import { KanbanService } from '../core/services/kanban-service';
 
@@ -29,6 +30,8 @@ import { KanbanService } from '../core/services/kanban-service';
 export class KanbanList implements OnInit {
   /** Data source providing the boards and the create, rename and delete operations. */
   private kanbanService = inject(KanbanService);
+  /** Router used to open a board's edit screen, which is where its name is entered. */
+  private router = inject(Router);
 
   /** All boards loaded from the data source, most recently modified first. */
   kanbans = signal<Kanban[]>([]);
@@ -56,6 +59,15 @@ export class KanbanList implements OnInit {
    */
   ngOnInit(): void {
     this.loadKanbans();
+  }
+
+  /**
+   * Opens the edit screen of a board that does not exist yet (US2). Nothing is written here: the
+   * board is created only once the user saves it from that screen (APPROCHE_KANBAN_CRUD.md, D-K11),
+   * so leaving the screen without saving leaves no stray board behind.
+   */
+  onAddKanban(): void {
+    this.router.navigate(['/kanban/new']);
   }
 
   /**

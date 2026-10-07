@@ -158,3 +158,37 @@
 
 .btn-retry:active { transform: scale(0.96); }
 .btn-retry:hover { opacity: .92; }
+
+/* ---- Bouton flottant « + » ---- */
+.fab {
+  position: fixed;
+  right: max(20px, calc(50% - 360px + 20px));
+  bottom: calc(24px + var(--safe-bottom));
+  width: 60px;
+  height: 60px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 122, 255, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 30;
+  transition: transform .1s ease;
+}
+
+.fab:active { transform: scale(0.94); }
+.fab .icon { width: 30px; height: 30px; }
+
+/* ---- Icônes SVG (via mask : la couleur suit le bouton) ---- */
+.icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.icon-plus { --icon: url("/icons/plus.svg"); }

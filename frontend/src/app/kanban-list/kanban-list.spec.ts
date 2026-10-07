@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 
 import { KanbanList } from './kanban-list';
@@ -39,17 +39,25 @@ const EMPTY_LIST_CALL_TO_ACTION = 'Touchez « + » pour en créer un.';
 describe('KanbanList (page « Mes Kanbans »)', () => {
   let fixture: ComponentFixture<KanbanList>;
   let el: HTMLElement;
-  let kanbanService: { getAllKanbans: ReturnType<typeof vi.fn> };
+  let kanbanService: {
+    getAllKanbans: ReturnType<typeof vi.fn>;
+    createKanban: ReturnType<typeof vi.fn>;
+  };
+  let navigateSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     kanbanService = {
       getAllKanbans: vi.fn().mockResolvedValue([]),
+      createKanban: vi.fn(),
     };
 
     await TestBed.configureTestingModule({
       imports: [KanbanList],
       providers: [provideRouter([]), { provide: KanbanService, useValue: kanbanService }],
     }).compileComponents();
+
+    const router = TestBed.inject(Router);
+    navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
 
     fixture = TestBed.createComponent(KanbanList);
     el = fixture.nativeElement as HTMLElement;
@@ -267,6 +275,24 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
       expect(loadAttempts).toBe(2);
       expect(errorShown).toBe(false);
       expect(displayedNames).toEqual(expectedNames);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 8 — Création
+  // ---------------------------------------------------------------------------
+  describe('Création', () => {
+    it('T8.1 navigue vers l’édition d’un nouveau tableau au clic sur « + », sans rien écrire en base', async () => {
+      await render();
+
+      await clickOn('.fab');
+
+      const navigations = navigateSpy.mock.calls;
+      const createCalls = kanbanService.createKanban.mock.calls;
+
+      expect(navigations.length).toBe(1);
+      expect(navigations[0][0]).toEqual(['/kanban/new']);
+      expect(createCalls.length).toBe(0);
     });
   });
 });
