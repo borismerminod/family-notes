@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
 import { Kanban } from '../core/models/kanban.model';
 import { KanbanService } from '../core/services/kanban-service';
+import { ConfirmDialog } from '../core/components/confirm-dialog/confirm-dialog';
 
 /**
  * Board list page, served by the `/kanban` route (lot 2 of
@@ -23,7 +24,7 @@ import { KanbanService } from '../core/services/kanban-service';
 @Component({
   selector: 'app-kanban-list',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, ConfirmDialog],
   templateUrl: './kanban-list.html',
   styleUrl: './kanban-list.css',
 })
@@ -39,6 +40,10 @@ export class KanbanList implements OnInit {
   isLoading = signal<boolean>(false);
   /** True when the last load attempt failed, which puts the page in its error state (US1). */
   loadError = signal<boolean>(false);
+  /** The board the user asked to delete, kept until they answer the confirmation (US5). */
+  kanbanToDelete = signal<Kanban | null>(null);
+  /** Whether the delete confirmation popup is open. */
+  confirmOpen = signal<boolean>(false);
 
   /**
    * Counts the boards for the subtitle of the top bar, the wording following the count: French
@@ -51,6 +56,16 @@ export class KanbanList implements OnInit {
       return 'Aucun tableau';
     }
     return total === 1 ? '1 tableau' : `${total} tableaux`;
+  });
+
+  /**
+   * Builds the message of the delete confirmation popup, which names the board at stake so the
+   * user can see what they are about to lose (US5).
+   * @returns The confirmation prompt, or an empty string while no board is targeted.
+   */
+  confirmMessage = computed(() => {
+    const kanban = this.kanbanToDelete();
+    return kanban === null ? '' : `Supprimer le tableau « ${kanban.name} » ?`;
   });
 
   /**
@@ -68,6 +83,25 @@ export class KanbanList implements OnInit {
    */
   onAddKanban(): void {
     this.router.navigate(['/kanban/new']);
+  }
+
+  /**
+   * Opens the edit screen of an existing board (US3), which is also where its name is changed
+   * (US4): the list carries no rename action of its own since D-K3 was revised.
+   * @param kanban The board whose card the user touched.
+   */
+  onOpenKanban(kanban: Kanban): void {
+    this.router.navigate(['/kanban/edit', kanban.id]);
+  }
+
+  /**
+   * Remembers the board the user asked to delete and opens the confirmation popup. Nothing is
+   * deleted at this point: the deletion waits for the user's answer (US5).
+   * @param kanban The board whose trash icon the user touched.
+   */
+  onDeleteKanban(kanban: Kanban): void {
+    this.kanbanToDelete.set(kanban);
+    this.confirmOpen.set(true);
   }
 
   /**

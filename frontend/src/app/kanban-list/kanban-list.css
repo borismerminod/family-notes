@@ -78,12 +78,21 @@
 
 /* ---- Carte tableau ---- */
 .kanban-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--surface);
   border-radius: var(--radius);
   padding: 16px 14px;
   margin-bottom: 12px;
   box-shadow: var(--shadow);
   overflow: hidden;
+  cursor: pointer;
+}
+
+.kanban-card .card-body {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .kanban-name {
@@ -192,3 +201,29 @@
 }
 
 .icon-plus { --icon: url("/icons/plus.svg"); }
+
+/* ---- Bouton d'action sur une carte ---- */
+.btn-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.btn-icon .icon { width: 20px; height: 20px; }
+
+.btn-icon.btn-danger:active,
+.btn-icon.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.icon-trash { --icon: url("/icons/trash.svg"); }

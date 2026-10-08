@@ -42,13 +42,18 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
   let kanbanService: {
     getAllKanbans: ReturnType<typeof vi.fn>;
     createKanban: ReturnType<typeof vi.fn>;
+    renameKanban: ReturnType<typeof vi.fn>;
+    deleteKanban: ReturnType<typeof vi.fn>;
   };
   let navigateSpy: ReturnType<typeof vi.spyOn>;
+  let navigateByUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     kanbanService = {
       getAllKanbans: vi.fn().mockResolvedValue([]),
       createKanban: vi.fn(),
+      renameKanban: vi.fn(),
+      deleteKanban: vi.fn(),
     };
 
     await TestBed.configureTestingModule({
@@ -58,6 +63,7 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
 
     const router = TestBed.inject(Router);
     navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    navigateByUrlSpy = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
 
     fixture = TestBed.createComponent(KanbanList);
     el = fixture.nativeElement as HTMLElement;
@@ -122,9 +128,46 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
     if (target === null) {
       throw new Error(`Aucun élément « ${selector} » à cliquer.`);
     }
+    await clickElement(target);
+  }
+
+  /**
+   * Clique sur un élément déjà tenu, puis attend que l'écran ait fini de se mettre à jour.
+   * @param target L'élément à cliquer.
+   */
+  async function clickElement(target: HTMLElement): Promise<void> {
     target.click();
     await fixture.whenStable();
     fixture.detectChanges();
+  }
+
+  /**
+   * Donne les adresses vers lesquelles la page a demandé de naviguer, qu'elle appelle le routeur
+   * elle-même ou qu'elle passe par un lien du gabarit : le comportement attendu porte sur l'écran
+   * atteint, pas sur la façon de l'atteindre.
+   * @returns Les adresses demandées, les appels directs d'abord, puis ceux issus des liens.
+   */
+  function navigations(): string[] {
+    const fromRouterCalls = navigateSpy.mock.calls.map((call: unknown[]) =>
+      (call[0] as unknown[]).join('/'),
+    );
+    const fromTemplateLinks = navigateByUrlSpy.mock.calls.map((call: unknown[]) =>
+      String(call[0]),
+    );
+    return [...fromRouterCalls, ...fromTemplateLinks];
+  }
+
+  /**
+   * Compte les écritures demandées à la source de données, toutes opérations confondues :
+   * l'effet « aucune écriture » du plan de test porte sur la création, le renommage et la
+   * suppression à la fois.
+   * @returns Le nombre d'appels d'écriture reçus.
+   */
+  function writeCalls(): number {
+    const created = kanbanService.createKanban.mock.calls.length;
+    const renamed = kanbanService.renameKanban.mock.calls.length;
+    const deleted = kanbanService.deleteKanban.mock.calls.length;
+    return created + renamed + deleted;
   }
 
   /** @returns Les cartes de tableau affichées, dans l'ordre du DOM. */
@@ -293,6 +336,66 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
       expect(navigations.length).toBe(1);
       expect(navigations[0][0]).toEqual(['/kanban/new']);
       expect(createCalls.length).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 9 — Ouverture d'un tableau existant
+  // ---------------------------------------------------------------------------
+  describe('Ouverture d’un tableau existant', () => {
+    it('T9.1 ouvre l’édition du tableau touché, sans rien écrire en base', async () => {
+      await render();
+
+      const targetKanban = SAMPLE[1];
+      const displayedCards = cards();
+      const targetCard = displayedCards[1];
+
+      await clickElement(targetCard);
+
+      const requestedRoutes = navigations();
+      const writes = writeCalls();
+
+      expect(requestedRoutes).toEqual([`/kanban/edit/${targetKanban.id}`]);
+      expect(writes).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 10 — Suppression
+  // ---------------------------------------------------------------------------
+  describe('Suppression', () => {
+    /**
+     * Donne le bouton de suppression porté par une carte.
+     * @param card La carte de tableau visée.
+     * @returns Le bouton corbeille de cette carte.
+     * @throws Quand la carte ne porte aucun bouton de suppression.
+     */
+    function trashButtonOf(card: HTMLElement): HTMLElement {
+      const button = card.querySelector<HTMLElement>('.btn-danger');
+      if (button === null) {
+        throw new Error('La carte ne porte aucun bouton de suppression.');
+      }
+      return button;
+    }
+
+    it('T10.1 ouvre la confirmation en citant le nom du tableau visé, sans rien supprimer', async () => {
+      await render();
+
+      const targetKanban = SAMPLE[1];
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+      const dialogShownBeforeClick = isShown('.confirm-card');
+
+      await clickElement(trashButton);
+
+      const dialogShownAfterClick = isShown('.confirm-card');
+      const confirmMessage = normalizedTextOf('.confirm-message');
+      const writes = writeCalls();
+
+      expect(dialogShownBeforeClick).toBe(false);
+      expect(dialogShownAfterClick).toBe(true);
+      expect(confirmMessage).toBe(`Supprimer le tableau « ${targetKanban.name} » ?`);
+      expect(writes).toBe(0);
     });
   });
 });
