@@ -36,6 +36,9 @@ const SAMPLE: Kanban[] = [
 const EMPTY_LIST_MESSAGE = "Aucun tableau pour l'instant.";
 const EMPTY_LIST_CALL_TO_ACTION = 'Touchez « + » pour en créer un.';
 
+/** Message du bandeau d'erreur quand la suppression a été refusée par la source de données. */
+const DELETE_FAILED_MESSAGE = 'Impossible de supprimer le tableau.';
+
 describe('KanbanList (page « Mes Kanbans »)', () => {
   let fixture: ComponentFixture<KanbanList>;
   let el: HTMLElement;
@@ -180,6 +183,20 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
   function cardNames(): string[] {
     const found = el.querySelectorAll('.kanban-name');
     return Array.from(found).map((name) => name.textContent!.trim());
+  }
+
+  /**
+   * Donne le bouton de suppression porté par une carte.
+   * @param card La carte de tableau visée.
+   * @returns Le bouton corbeille de cette carte.
+   * @throws Quand la carte ne porte aucun bouton de suppression.
+   */
+  function trashButtonOf(card: HTMLElement): HTMLElement {
+    const button = card.querySelector<HTMLElement>('.btn-danger');
+    if (button === null) {
+      throw new Error('La carte ne porte aucun bouton de suppression.');
+    }
+    return button;
   }
 
   /**
@@ -364,18 +381,22 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
   // Groupe 10 — Suppression
   // ---------------------------------------------------------------------------
   describe('Suppression', () => {
+    /** Répond « Confirmer » dans la popup, puis attend que l'écran ait fini de se mettre à jour. */
+    async function confirmDeletion(): Promise<void> {
+      await clickOn('.confirm-card .btn-confirm');
+    }
+
+    /** Répond « Annuler » dans la popup, puis attend que l'écran ait fini de se mettre à jour. */
+    async function cancelDeletion(): Promise<void> {
+      await clickOn('.confirm-card .btn-cancel');
+    }
+
     /**
-     * Donne le bouton de suppression porté par une carte.
-     * @param card La carte de tableau visée.
-     * @returns Le bouton corbeille de cette carte.
-     * @throws Quand la carte ne porte aucun bouton de suppression.
+     * Clique sur le fond de la popup, hors de la carte : le ConfirmDialog traite ce geste comme une
+     * annulation. Attend ensuite que l'écran ait fini de se mettre à jour.
      */
-    function trashButtonOf(card: HTMLElement): HTMLElement {
-      const button = card.querySelector<HTMLElement>('.btn-danger');
-      if (button === null) {
-        throw new Error('La carte ne porte aucun bouton de suppression.');
-      }
-      return button;
+    async function clickOutsideDialog(): Promise<void> {
+      await clickOn('.confirm-backdrop');
     }
 
     it('T10.1 ouvre la confirmation en citant le nom du tableau visé, sans rien supprimer', async () => {
@@ -396,6 +417,136 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
       expect(dialogShownAfterClick).toBe(true);
       expect(confirmMessage).toBe(`Supprimer le tableau « ${targetKanban.name} » ?`);
       expect(writes).toBe(0);
+    });
+
+    it('T10.2 demande la suppression du tableau visé quand l’utilisateur confirme', async () => {
+      kanbanService.deleteKanban.mockResolvedValue(undefined);
+      await render();
+
+      const targetKanban = SAMPLE[1];
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+
+      await clickElement(trashButton);
+      await confirmDeletion();
+
+      const deleteCalls = kanbanService.deleteKanban.mock.calls;
+
+      expect(deleteCalls.length).toBe(1);
+      expect(deleteCalls[0][0]).toBe(targetKanban.id);
+    });
+
+    it('T10.3 retire le tableau de la liste après une suppression réussie', async () => {
+      kanbanService.deleteKanban.mockResolvedValue(undefined);
+      await render();
+
+      const targetKanban = SAMPLE[1];
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+
+      await clickElement(trashButton);
+      await confirmDeletion();
+
+      const survivors = SAMPLE.filter((kanban) => kanban.id !== targetKanban.id);
+      const expectedNames = survivors.map((kanban) => kanban.name);
+      const remainingNames = cardNames();
+      const loadAttempts = kanbanService.getAllKanbans.mock.calls.length;
+
+      expect(remainingNames).toEqual(expectedNames);
+      expect(loadAttempts).toBe(1);
+    });
+
+    it('T10.4 ferme la popup sans rien supprimer quand l’utilisateur annule ou clique hors de la popup', async () => {
+      await render();
+
+      const expectedNames = SAMPLE.map((kanban) => kanban.name);
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+
+      await clickElement(trashButton);
+      await cancelDeletion();
+
+      const dialogAfterCancel = isShown('.confirm-card');
+      const namesAfterCancel = cardNames();
+
+      const cardsAfterCancel = cards();
+      const trashButtonAgain = trashButtonOf(cardsAfterCancel[1]);
+
+      await clickElement(trashButtonAgain);
+      await clickOutsideDialog();
+
+      const dialogAfterOutsideClick = isShown('.confirm-card');
+      const namesAfterOutsideClick = cardNames();
+      const writes = writeCalls();
+
+      expect(dialogAfterCancel).toBe(false);
+      expect(namesAfterCancel).toEqual(expectedNames);
+      expect(dialogAfterOutsideClick).toBe(false);
+      expect(namesAfterOutsideClick).toEqual(expectedNames);
+      expect(writes).toBe(0);
+    });
+
+    it('T10.5 garde le tableau affiché et affiche le bandeau d’erreur quand la suppression échoue', async () => {
+      kanbanService.deleteKanban.mockRejectedValue(new Error('suppression refusée'));
+      await render();
+
+      const expectedNames = SAMPLE.map((kanban) => kanban.name);
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+
+      await clickElement(trashButton);
+      await confirmDeletion();
+
+      const remainingNames = cardNames();
+      const bannerShown = isShown('.action-error');
+      const bannerMessage = normalizedTextOf('.action-error');
+
+      expect(remainingNames).toEqual(expectedNames);
+      expect(bannerShown).toBe(true);
+      expect(bannerMessage).toContain(DELETE_FAILED_MESSAGE);
+    });
+
+    it('T10.6 n’ouvre pas l’écran d’édition quand l’utilisateur touche la corbeille', async () => {
+      await render();
+
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+
+      await clickElement(trashButton);
+
+      const dialogShown = isShown('.confirm-card');
+      const requestedRoutes = navigations();
+
+      expect(dialogShown).toBe(true);
+      expect(requestedRoutes).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 11 — Bandeau d'erreur d'action
+  // ---------------------------------------------------------------------------
+  describe('Bandeau d’erreur d’action', () => {
+    it('T11.1 efface le bandeau d’erreur dès le début de l’action suivante', async () => {
+      kanbanService.deleteKanban.mockRejectedValue(new Error('suppression refusée'));
+      await render();
+
+      const displayedCards = cards();
+      const firstTrashButton = trashButtonOf(displayedCards[1]);
+
+      await clickElement(firstTrashButton);
+      await clickOn('.confirm-card .btn-confirm');
+
+      const bannerAfterFailure = isShown('.action-error');
+
+      const cardsAfterFailure = cards();
+      const secondTrashButton = trashButtonOf(cardsAfterFailure[0]);
+
+      await clickElement(secondTrashButton);
+
+      const bannerAtNextActionStart = isShown('.action-error');
+
+      expect(bannerAfterFailure).toBe(true);
+      expect(bannerAtNextActionStart).toBe(false);
     });
   });
 });

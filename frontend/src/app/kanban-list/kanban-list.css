@@ -16,6 +16,7 @@
   --text-2: #8e8e93;
   --separator: #e5e5ea;
   --accent: #007aff;
+  --danger: #ff3b30;
   --radius: 16px;
   --safe-top: env(safe-area-inset-top, 0px);
   --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .04);
@@ -71,6 +72,17 @@
   color: var(--text-2);
 }
 
+/* ---- Bandeau d'erreur d'action (suppression refusée) ---- */
+.action-error {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+}
+
 /* ---- Liste des tableaux ---- */
 .kanbans-list {
   padding: 12px 16px calc(24px + var(--safe-bottom));
@@ -78,16 +90,29 @@
 
 /* ---- Carte tableau ---- */
 .kanban-card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 12px;
   background: var(--surface);
   border-radius: var(--radius);
-  padding: 16px 14px;
+  padding: 16px 14px 16px 18px;
   margin-bottom: 12px;
   box-shadow: var(--shadow);
   overflow: hidden;
   cursor: pointer;
+}
+
+/* Barre d'accent colorée, comme sur les cartes de notes. Elle y porte la couleur
+   de la catégorie ; un tableau n'en ayant pas, elle est toujours bleue. */
+.kanban-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--accent);
 }
 
 .kanban-card .card-body {

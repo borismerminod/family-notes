@@ -4,6 +4,10 @@
     <p class="count">{{ countLabel() }}</p>
   </header>
 
+  @if (actionError()) {
+    <p class="action-error" role="alert">{{ actionError() }}</p>
+  }
+
   @if (isLoading()) {
     <div class="loading-overlay">
       <div class="spinner"></div>
@@ -26,7 +30,7 @@
           <button
             type="button"
             class="btn-icon btn-danger"
-            (click)="onDeleteKanban(kanban)"
+            (click)="onDeleteKanban(kanban, $event)"
             aria-label="Supprimer"
           >
             <span class="icon icon-trash" aria-hidden="true"></span>
@@ -50,5 +54,6 @@
     [(open)]="confirmOpen"
     confirmLabel="Confirmer"
     cancelLabel="Annuler"
+    (answered)="onDeleteConfirmed($event)"
   />
 </div>

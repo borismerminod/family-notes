@@ -7,19 +7,17 @@ import { ConfirmDialog } from '../core/components/confirm-dialog/confirm-dialog'
 
 /**
  * Board list page, served by the `/kanban` route (lot 2 of
- * .agent/KANBAN/CRUD/APPROCHE_KANBAN_CRUD.md): it lists the boards and carries the three write
- * actions of the feature — create (US2), rename (US4) and delete (US5).
+ * .agent/KANBAN/CRUD/APPROCHE_KANBAN_CRUD.md): it lists the boards and lets the user reach the
+ * edit screen or delete a board.
  *
- * The name is entered in a popup held by this page's own template, shared by creation and renaming
- * (D-K2); deletion reuses the confirmation popup of the notes page (US5). The list is only
- * refreshed once the database has accepted the change (D-K7): a failed action leaves the screen
- * untouched and shows a message in the error banner.
- *
- * Boards carry no detail screen yet (D-K9), so a card is not clickable.
+ * Since D-K3 and D-K9 were revised on 2026-10-07, the page holds no name form of its own: "+" and
+ * a card both open the edit screen (`/kanban/new`, `/kanban/edit/:id`), which carries the name and
+ * the save button. Deletion is therefore the only write made from here; it reuses the confirmation
+ * popup of the notes page (US5), and the list is only updated once the database has accepted the
+ * change (D-K7).
  *
  * Built test group by test group against `PLAN_TESTS_KANBAN_CRUD.md`, part B. Done so far:
- * groupe 6 (chargement et affichage) — T6.1 to T6.4. Still to come: the rest of groupe 6, then
- * groupes 7 to 11 (empty and error states, creation, renaming, deletion, error banner).
+ * groupes 6 to 11, which closes part B of the test plan.
  */
 @Component({
   selector: 'app-kanban-list',
@@ -44,6 +42,8 @@ export class KanbanList implements OnInit {
   kanbanToDelete = signal<Kanban | null>(null);
   /** Whether the delete confirmation popup is open. */
   confirmOpen = signal<boolean>(false);
+  /** Message of the non-blocking banner shown after a failed deletion (empty when none). */
+  actionError = signal<string>('');
 
   /**
    * Counts the boards for the subtitle of the top bar, the wording following the count: French
@@ -97,11 +97,51 @@ export class KanbanList implements OnInit {
   /**
    * Remembers the board the user asked to delete and opens the confirmation popup. Nothing is
    * deleted at this point: the deletion waits for the user's answer (US5).
+   *
+   * The click is stopped here so it never reaches the card underneath, which would otherwise open
+   * the board's edit screen behind the popup: the trash icon sits inside the card, and a click
+   * bubbles.
+   *
+   * Starting an action also clears the error banner of the previous one: a message about a board
+   * the user has moved on from would be read as being about the board they are targeting now.
    * @param kanban The board whose trash icon the user touched.
+   * @param event The click on the trash icon, stopped before it reaches the card.
    */
-  onDeleteKanban(kanban: Kanban): void {
+  onDeleteKanban(kanban: Kanban, event: Event): void {
+    this.actionError.set('');
     this.kanbanToDelete.set(kanban);
     this.confirmOpen.set(true);
+    event.stopPropagation();
+  }
+
+  /**
+   * Handles the answer of the confirmation popup: the board is deleted only once the user has said
+   * yes (US5), and the pending board is dropped either way so a later answer cannot delete it
+   * twice. A failure is only logged for now; showing it on screen belongs to groupe 11.
+   *
+   * On success the board is dropped from the list in place, rather than by asking the data source
+   * again: the deletion is the only change, so reloading would cost a round trip and make the list
+   * flicker for nothing. The list is only touched once the database has accepted the deletion
+   * (D-K7), so a failed deletion leaves the board on screen and says so in the error banner, which
+   * the SPEC asks to be visible rather than left in the console.
+   * @param confirmed True when the user confirmed the deletion, false when they declined it.
+   * @returns A promise that resolves once the deletion attempt has completed (success or failure).
+   */
+  async onDeleteConfirmed(confirmed: boolean): Promise<void> {
+    const kanban = this.kanbanToDelete();
+    this.kanbanToDelete.set(null);
+
+    if (!confirmed || kanban === null) {
+      return;
+    }
+
+    try {
+      await this.kanbanService.deleteKanban(kanban.id);
+      this.kanbans.update((current) => current.filter((k) => k.id !== kanban.id));
+    } catch (err) {
+      console.error('Erreur lors de la suppression du kanban', err);
+      this.actionError.set('Impossible de supprimer le tableau.');
+    }
   }
 
   /**
