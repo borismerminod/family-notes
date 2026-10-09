@@ -8,14 +8,47 @@
     <div class="loading-overlay">
       <div class="spinner"></div>
     </div>
+  } @else if (loadError()) {
+    <div class="empty error-state">
+      <span class="material-icons">error_outline</span>
+      <p>Impossible de charger les tableaux.</p>
+      <button type="button" class="btn-retry" (click)="loadKanbans()">Réessayer</button>
+    </div>
   } @else {
     <div class="kanbans-list">
       @for (kanban of kanbans(); track kanban.id) {
-        <article class="kanban-card">
-          <h3 class="kanban-name">{{ kanban.name }}</h3>
-          <span class="kanban-date">{{ kanban.updatedAt | date:'shortDate' }}</span>
+        <article class="kanban-card" (click)="onOpenKanban(kanban)">
+          <div class="card-body">
+            <h3 class="kanban-name">{{ kanban.name }}</h3>
+            <span class="kanban-date">{{ kanban.updatedAt | date:'shortDate' }}</span>
+          </div>
+
+          <button
+            type="button"
+            class="btn-icon btn-danger"
+            (click)="onDeleteKanban(kanban)"
+            aria-label="Supprimer"
+          >
+            <span class="icon icon-trash" aria-hidden="true"></span>
+          </button>
         </article>
+      } @empty {
+        <div class="empty">
+          <span class="material-icons">view_kanban</span>
+          <p>Aucun tableau pour l'instant.<br>Touchez « + » pour en créer un.</p>
+        </div>
       }
     </div>
   }
+
+  <button type="button" class="fab" (click)="onAddKanban()" aria-label="Nouveau tableau">
+    <span class="icon icon-plus" aria-hidden="true"></span>
+  </button>
+
+  <app-confirm-dialog
+    [message]="confirmMessage()"
+    [(open)]="confirmOpen"
+    confirmLabel="Confirmer"
+    cancelLabel="Annuler"
+  />
 </div>

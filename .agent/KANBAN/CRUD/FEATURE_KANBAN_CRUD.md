@@ -1,8 +1,9 @@
 ---
 name: kanban_crud
-description: Nouvelle page Kanban offrant la gestion (CRUD) des tableaux kanban — liste, création, modification et suppression confirmée.
+description: Nouvelle page Kanban offrant la gestion (CRUD) des tableaux kanban — liste, ouverture, création et suppression confirmée. Le nom d'un tableau se saisit dans son écran d'édition, pas dans une popup.
 status: brouillon — à valider
 date: 2026-09-29
+revised: 2026-10-07
 ---
 
 # Explication du développement à réaliser
@@ -14,8 +15,10 @@ interactions, il faut pouvoir **gérer les tableaux eux-mêmes**. C'est l'objet 
 Nous ajoutons une **nouvelle page « Kanban »** (route dédiée, sur le modèle de la page
 « Mes Notes ») qui affiche la **liste des tableaux kanban** de l'utilisateur. Depuis cette
 page, l'utilisateur peut :
-- **Ajouter** un nouveau tableau kanban en lui donnant un nom ;
-- **Modifier** un tableau existant (renommer) ;
+- **Ajouter** un tableau : le bouton « + » ouvre directement l'écran d'édition d'un nouveau
+  tableau, où le nom se saisit et où un bouton d'enregistrement le crée ;
+- **Ouvrir** un tableau existant en touchant sa carte — cet écran d'édition étant aussi
+  l'endroit où son nom se modifie ;
 - **Supprimer** un tableau, **après confirmation** via la même popup de confirmation que
   pour les notes (composant `ConfirmDialog`) : rien n'est supprimé tant que l'utilisateur
   n'a pas confirmé.
@@ -28,20 +31,30 @@ cartes de liste, icône corbeille, états vide / chargement / erreur) s'alignent
 
 Maquette visuelle proposée (2026-09-29) : [`MAQUETTE_KANBAN_LIST.html`](MAQUETTE_KANBAN_LIST.html).
 
+> **Révision du 2026-10-07.** La saisie du nom passe de la popup à l'écran d'édition du tableau :
+> « + » ouvre un nouveau tableau sans rien écrire en base, et toucher une carte ouvre ce même écran
+> pour un tableau existant. Conséquences sur ce document : US2 et US4 réécrites, US3 n'est plus
+> reportée mais devient le lot dont elles dépendent, H2 et H3 tranchées. Les écrans 2 et 3 de la
+> maquette (popup de saisie) ne sont plus la cible ; l'écran 1 (liste), l'écran 6 (liste vide) et la
+> popup de confirmation de suppression restent valables.
+
 # Périmètre
 
 **Inclus :**
 - Nouvelle page « Kanban » accessible par une route dédiée.
 - Affichage de la liste des tableaux kanban (nom + date de dernière modification), avec
   états chargement, liste vide et erreur de chargement.
-- Création d'un tableau (nom obligatoire).
-- Modification du nom d'un tableau.
+- Ouverture de l'écran d'édition d'un tableau : pour un nouveau tableau depuis le bouton
+  flottant « + », pour un tableau existant en touchant sa carte. Toucher « + » n'écrit rien
+  en base.
 - Suppression d'un tableau avec popup de confirmation (réutilisation de `ConfirmDialog`).
 - Persistance locale des tableaux (nouvelle table SQLite + service dédié).
 
 **Hors périmètre (lots ultérieurs) :**
-- Consultation d'un tableau : écran de détail ouvert depuis la liste (US3 — reportée le
-  2026-09-29, cf. `APPROCHE_KANBAN_CRUD.md` D-K9).
+- L'écran d'édition d'un tableau lui-même (US3) : saisie du nom, bouton d'enregistrement,
+  création effective en base, retour à la liste. Ce lot ne livre que la **navigation** vers cet
+  écran ; son contenu fait l'objet du lot suivant, dont US2 et US4 dépendent désormais
+  (cf. `APPROCHE_KANBAN_CRUD.md` D-K9, révisée).
 - Listes (colonnes) et cartes à l'intérieur d'un tableau.
 - Glisser-déposer des cartes entre listes.
 - Recherche / filtre / tri des tableaux.
@@ -67,39 +80,46 @@ Maquette visuelle proposée (2026-09-29) : [`MAQUETTE_KANBAN_LIST.html`](MAQUETT
 
 **US2 : Ajouter un tableau kanban**
 - **En tant qu'** utilisateur,
-- **je veux** créer un nouveau tableau en lui donnant un nom,
+- **je veux** créer un nouveau tableau,
 - **afin de** organiser un nouveau sujet (courses, travaux, vacances…).
 - **Critères d'acceptation :**
-    - Un bouton flottant « + » déclenche la création.
-    - Le nom est obligatoire : un nom vide (ou composé uniquement d'espaces) ne peut pas être
-      validé.
-    - Le nom saisi est enregistré sans espaces superflus en début/fin.
-    - L'annulation ne crée aucun tableau.
-    - Après validation, le nouveau tableau apparaît dans la liste et est persisté
+    - Un bouton flottant « + » ouvre l'écran d'édition d'un nouveau tableau.
+    - Toucher « + » **n'écrit rien** en base : aucun tableau n'existe encore à ce moment.
+    - Tant que l'utilisateur n'a rien saisi, le tableau porte le nom « Sans titre » ; un nom
+      vide n'est donc jamais enregistré.
+    - Le tableau est créé en base au moment où l'utilisateur touche le **bouton
+      d'enregistrement** de l'écran d'édition.
+    - Le nom est enregistré sans espaces superflus en début / fin.
+    - Quitter l'écran d'édition sans enregistrer ne crée aucun tableau.
+    - Après enregistrement, le nouveau tableau apparaît dans la liste et est persisté
       (toujours présent après redémarrage).
 
-**US3 : Consulter un tableau kanban** — *reportée le 2026-09-29 (hors de ce lot, conservée pour
-un lot ultérieur)*
+**US3 : Ouvrir et éditer un tableau kanban** — *le report du 2026-09-29 est levé le 2026-10-07 :
+l'écran devient le lot suivant, dont US2 et US4 dépendent. Ce lot ne livre que la navigation
+depuis la liste.*
 - **En tant qu'** utilisateur,
-- **je veux** ouvrir un tableau depuis la liste,
-- **afin d'** accéder à son contenu.
+- **je veux** ouvrir un tableau depuis la liste et pouvoir y changer son nom,
+- **afin d'** accéder à son contenu et de corriger son intitulé.
 - **Critères d'acceptation :**
-    - Toucher un tableau dans la liste ouvre son écran de détail.
-    - L'écran de détail affiche le nom du tableau (zone de contenu vide dans un premier temps).
-    - Un retour ramène à la liste des tableaux.
+    - Toucher une carte de la liste ouvre l'écran d'édition de **ce** tableau.
+    - Le bouton « + » ouvre le même écran, pour un tableau qui n'existe pas encore en base.
+    - L'écran affiche le nom du tableau, modifiable, et un bouton d'enregistrement
+      (zone de contenu vide dans un premier temps).
+    - Un retour ramène à la liste des tableaux, sans rien enregistrer.
     - Un identifiant de tableau inexistant ne provoque pas d'erreur bloquante : l'utilisateur
       est ramené à la liste.
 
-**US4 : Modifier un tableau kanban**
+**US4 : Renommer un tableau kanban**
 - **En tant qu'** utilisateur,
 - **je veux** renommer un tableau existant,
 - **afin de** corriger ou faire évoluer son intitulé.
 - **Critères d'acceptation :**
-    - Une action « Modifier » est disponible pour chaque tableau.
-    - Le formulaire est pré-rempli avec le nom actuel.
-    - Mêmes règles de validation qu'à la création (nom obligatoire, espaces retirés).
-    - L'annulation laisse le tableau inchangé.
-    - Après validation, le nouveau nom et la date de modification sont mis à jour dans la
+    - Le renommage se fait dans l'écran d'édition du tableau, ouvert en touchant sa carte :
+      la liste ne porte **aucune** action « Modifier » (plus d'icône crayon).
+    - Le champ est pré-rempli avec le nom actuel.
+    - Mêmes règles qu'à la création : espaces de début / fin retirés, nom jamais vide.
+    - Quitter l'écran sans enregistrer laisse le tableau inchangé.
+    - Après enregistrement, le nouveau nom et la date de modification sont mis à jour dans la
       liste et persistés.
 
 **US5 : Supprimer un tableau kanban avec confirmation**
@@ -107,8 +127,9 @@ un lot ultérieur)*
 - **je veux** supprimer un tableau dont je n'ai plus besoin, après avoir confirmé mon choix,
 - **afin d'** éviter toute suppression accidentelle.
 - **Critères d'acceptation :**
-    - Une icône corbeille est disponible sur chaque tableau ; la toucher n'ouvre **pas** le
-      tableau.
+    - Une icône corbeille est disponible sur chaque tableau ; la toucher n'ouvre **pas** son
+      écran d'édition. Ce point devient critique depuis le 2026-10-07 : la carte entière étant
+      désormais cliquable, le clic sur la corbeille ne doit pas se propager.
     - La corbeille ouvre la popup de confirmation (même composant que pour les notes), dont
       le message cite le nom du tableau.
     - Tant que l'utilisateur n'a pas confirmé, rien n'est supprimé.
@@ -121,11 +142,12 @@ un lot ultérieur)*
 
 - **H1 — Attributs d'un tableau** : pour ce lot, un tableau se limite à un **nom** et une
   **date de dernière modification** (plus son identifiant). Faut-il ajouter une description ?
-- **H2 — Forme du formulaire de création/modification** : proposé sous forme de **popup**
-  sur la page Kanban (saisie courte d'un nom), plutôt qu'une page dédiée comme l'éditeur de
-  notes. À confirmer.
-- **H3 — Emplacement de l'action « Modifier »** : icône crayon sur chaque carte de la liste
-  (à côté de la corbeille). L'écran de détail étant reporté, il ne porte pas d'action dans ce lot.
+- **H2 — Forme de la saisie du nom** — *tranchée le 2026-10-07* : **pas de popup**. Le nom se
+  saisit dans l'écran d'édition du tableau, qui porte un bouton d'enregistrement, sur le modèle
+  de l'éditeur de notes.
+- **H3 — Emplacement de l'action « Modifier »** — *tranchée le 2026-10-07* : **aucune action sur
+  la carte**. Toucher la carte ouvre l'écran d'édition, qui est l'endroit du renommage. Seule la
+  corbeille reste sur la carte.
 - **H4 — Unicité du nom** : deux tableaux peuvent-ils porter le même nom ? Hypothèse : oui,
   aucun contrôle d'unicité dans ce lot.
 - **H5 — Accès à la page** : l'application n'a pas de menu de navigation global ; la page

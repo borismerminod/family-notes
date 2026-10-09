@@ -78,12 +78,21 @@
 
 /* ---- Carte tableau ---- */
 .kanban-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   background: var(--surface);
   border-radius: var(--radius);
   padding: 16px 14px;
   margin-bottom: 12px;
   box-shadow: var(--shadow);
   overflow: hidden;
+  cursor: pointer;
+}
+
+.kanban-card .card-body {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 
 .kanban-name {
@@ -121,3 +130,100 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ---- État vide ---- */
+.empty {
+  text-align: center;
+  padding: 80px 30px;
+  color: var(--text-2);
+}
+
+.empty .material-icons {
+  font-size: 54px;
+  opacity: .4;
+}
+
+.empty p {
+  font-size: 15px;
+  margin: 12px 0 0;
+  line-height: 1.4;
+}
+
+/* ---- État d'erreur de chargement ---- */
+.error-state .material-icons { color: var(--danger); }
+
+.btn-retry {
+  margin-top: 16px;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .1s ease, opacity .2s;
+}
+
+.btn-retry:active { transform: scale(0.96); }
+.btn-retry:hover { opacity: .92; }
+
+/* ---- Bouton flottant « + » ---- */
+.fab {
+  position: fixed;
+  right: max(20px, calc(50% - 360px + 20px));
+  bottom: calc(24px + var(--safe-bottom));
+  width: 60px;
+  height: 60px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 122, 255, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 30;
+  transition: transform .1s ease;
+}
+
+.fab:active { transform: scale(0.94); }
+.fab .icon { width: 30px; height: 30px; }
+
+/* ---- Icônes SVG (via mask : la couleur suit le bouton) ---- */
+.icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.icon-plus { --icon: url("/icons/plus.svg"); }
+
+/* ---- Bouton d'action sur une carte ---- */
+.btn-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.btn-icon .icon { width: 20px; height: 20px; }
+
+.btn-icon.btn-danger:active,
+.btn-icon.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.icon-trash { --icon: url("/icons/trash.svg"); }

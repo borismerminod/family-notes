@@ -1,5 +1,5 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 
 import { KanbanList } from './kanban-list';
@@ -28,20 +28,42 @@ const SAMPLE: Kanban[] = [
   { id: 'k-oldest', name: 'Travaux de la maison', updatedAt: '2026-08-30T10:05:00.000Z' },
 ];
 
+/**
+ * Les deux phrases du message affiché quand aucun tableau n'existe. Elles sont vérifiées
+ * séparément : le gabarit est libre de les séparer par un `<br>`, comme la maquette, ce qui ne
+ * laisse aucune espace entre elles dans le texte du DOM.
+ */
+const EMPTY_LIST_MESSAGE = "Aucun tableau pour l'instant.";
+const EMPTY_LIST_CALL_TO_ACTION = 'Touchez « + » pour en créer un.';
+
 describe('KanbanList (page « Mes Kanbans »)', () => {
   let fixture: ComponentFixture<KanbanList>;
   let el: HTMLElement;
-  let kanbanService: { getAllKanbans: ReturnType<typeof vi.fn> };
+  let kanbanService: {
+    getAllKanbans: ReturnType<typeof vi.fn>;
+    createKanban: ReturnType<typeof vi.fn>;
+    renameKanban: ReturnType<typeof vi.fn>;
+    deleteKanban: ReturnType<typeof vi.fn>;
+  };
+  let navigateSpy: ReturnType<typeof vi.spyOn>;
+  let navigateByUrlSpy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(async () => {
     kanbanService = {
       getAllKanbans: vi.fn().mockResolvedValue([]),
+      createKanban: vi.fn(),
+      renameKanban: vi.fn(),
+      deleteKanban: vi.fn(),
     };
 
     await TestBed.configureTestingModule({
       imports: [KanbanList],
       providers: [provideRouter([]), { provide: KanbanService, useValue: kanbanService }],
     }).compileComponents();
+
+    const router = TestBed.inject(Router);
+    navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    navigateByUrlSpy = vi.spyOn(router, 'navigateByUrl').mockResolvedValue(true);
 
     fixture = TestBed.createComponent(KanbanList);
     el = fixture.nativeElement as HTMLElement;
@@ -81,6 +103,71 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
   function textOf(selector: string): string {
     const found = el.querySelector(selector);
     return found?.textContent?.trim() ?? '';
+  }
+
+  /**
+   * Lit le texte d'un élément en neutralisant la mise en forme : espaces insécables ramenés à des
+   * espaces ordinaires, suites d'espaces et retours à la ligne réduits à un seul espace. Permet de
+   * vérifier un libellé sans figer la façon dont le gabarit le découpe (icône, `<br>`, indentation).
+   * @param selector Le sélecteur CSS cherché dans le gabarit de la page.
+   * @returns Le texte normalisé, espaces de bord retirés, ou une chaîne vide si l'élément est absent.
+   */
+  function normalizedTextOf(selector: string): string {
+    const found = el.querySelector(selector);
+    const raw = found?.textContent ?? '';
+    return raw.replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
+   * Clique sur un élément de la page, puis attend que l'écran ait fini de se mettre à jour.
+   * @param selector Le sélecteur CSS de l'élément à cliquer.
+   * @throws Quand aucun élément ne correspond, ce qui signalerait un gabarit inattendu.
+   */
+  async function clickOn(selector: string): Promise<void> {
+    const target = el.querySelector<HTMLElement>(selector);
+    if (target === null) {
+      throw new Error(`Aucun élément « ${selector} » à cliquer.`);
+    }
+    await clickElement(target);
+  }
+
+  /**
+   * Clique sur un élément déjà tenu, puis attend que l'écran ait fini de se mettre à jour.
+   * @param target L'élément à cliquer.
+   */
+  async function clickElement(target: HTMLElement): Promise<void> {
+    target.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  /**
+   * Donne les adresses vers lesquelles la page a demandé de naviguer, qu'elle appelle le routeur
+   * elle-même ou qu'elle passe par un lien du gabarit : le comportement attendu porte sur l'écran
+   * atteint, pas sur la façon de l'atteindre.
+   * @returns Les adresses demandées, les appels directs d'abord, puis ceux issus des liens.
+   */
+  function navigations(): string[] {
+    const fromRouterCalls = navigateSpy.mock.calls.map((call: unknown[]) =>
+      (call[0] as unknown[]).join('/'),
+    );
+    const fromTemplateLinks = navigateByUrlSpy.mock.calls.map((call: unknown[]) =>
+      String(call[0]),
+    );
+    return [...fromRouterCalls, ...fromTemplateLinks];
+  }
+
+  /**
+   * Compte les écritures demandées à la source de données, toutes opérations confondues :
+   * l'effet « aucune écriture » du plan de test porte sur la création, le renommage et la
+   * suppression à la fois.
+   * @returns Le nombre d'appels d'écriture reçus.
+   */
+  function writeCalls(): number {
+    const created = kanbanService.createKanban.mock.calls.length;
+    const renamed = kanbanService.renameKanban.mock.calls.length;
+    const deleted = kanbanService.deleteKanban.mock.calls.length;
+    return created + renamed + deleted;
   }
 
   /** @returns Les cartes de tableau affichées, dans l'ordre du DOM. */
@@ -166,6 +253,149 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
       const expectedNames = SAMPLE.map((kanban) => kanban.name);
 
       expect(displayedNames).toEqual(expectedNames);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 7 — Liste vide et erreur de chargement
+  // ---------------------------------------------------------------------------
+  describe('Liste vide et erreur de chargement', () => {
+    /**
+     * Déclenche le chargement initial avec une source de données en échec, attend son rejet, puis
+     * rafraîchit le DOM.
+     */
+    async function renderError(): Promise<void> {
+      kanbanService.getAllKanbans.mockRejectedValue(new Error('source indisponible'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    }
+
+    it('T7.1 affiche le message d’invitation et aucune carte quand il n’y a aucun tableau', async () => {
+      await render([]);
+
+      const emptyShown = isShown('.empty');
+      const emptyMessage = normalizedTextOf('.empty');
+      const displayedCards = cards();
+
+      expect(emptyShown).toBe(true);
+      expect(emptyMessage).toContain(EMPTY_LIST_MESSAGE);
+      expect(emptyMessage).toContain(EMPTY_LIST_CALL_TO_ACTION);
+      expect(displayedCards.length).toBe(0);
+    });
+
+    it('T7.2 affiche une erreur et « Réessayer » quand le chargement échoue, sans chargement, liste ni message vide', async () => {
+      await renderError();
+
+      const errorShown = isShown('.error-state');
+      const errorMessage = normalizedTextOf('.error-state p');
+      const retryLabel = textOf('.btn-retry');
+      const spinnerShown = isShown('.spinner');
+      const listShown = isShown('.kanbans-list');
+      const displayedCards = cards();
+      const pageText = normalizedTextOf('.kanban-list-container');
+
+      expect(errorShown).toBe(true);
+      expect(errorMessage.length).toBeGreaterThan(0);
+      expect(retryLabel).toBe('Réessayer');
+      expect(spinnerShown).toBe(false);
+      expect(listShown).toBe(false);
+      expect(displayedCards.length).toBe(0);
+      expect(pageText).not.toContain(EMPTY_LIST_MESSAGE);
+    });
+
+    it('T7.3 relance le chargement au clic sur « Réessayer » et affiche la liste une fois la source rétablie', async () => {
+      await renderError();
+      kanbanService.getAllKanbans.mockResolvedValue(SAMPLE);
+
+      await clickOn('.btn-retry');
+
+      const loadAttempts = kanbanService.getAllKanbans.mock.calls.length;
+      const errorShown = isShown('.error-state');
+      const displayedNames = cardNames();
+      const expectedNames = SAMPLE.map((kanban) => kanban.name);
+
+      expect(loadAttempts).toBe(2);
+      expect(errorShown).toBe(false);
+      expect(displayedNames).toEqual(expectedNames);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 8 — Création
+  // ---------------------------------------------------------------------------
+  describe('Création', () => {
+    it('T8.1 navigue vers l’édition d’un nouveau tableau au clic sur « + », sans rien écrire en base', async () => {
+      await render();
+
+      await clickOn('.fab');
+
+      const navigations = navigateSpy.mock.calls;
+      const createCalls = kanbanService.createKanban.mock.calls;
+
+      expect(navigations.length).toBe(1);
+      expect(navigations[0][0]).toEqual(['/kanban/new']);
+      expect(createCalls.length).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 9 — Ouverture d'un tableau existant
+  // ---------------------------------------------------------------------------
+  describe('Ouverture d’un tableau existant', () => {
+    it('T9.1 ouvre l’édition du tableau touché, sans rien écrire en base', async () => {
+      await render();
+
+      const targetKanban = SAMPLE[1];
+      const displayedCards = cards();
+      const targetCard = displayedCards[1];
+
+      await clickElement(targetCard);
+
+      const requestedRoutes = navigations();
+      const writes = writeCalls();
+
+      expect(requestedRoutes).toEqual([`/kanban/edit/${targetKanban.id}`]);
+      expect(writes).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 10 — Suppression
+  // ---------------------------------------------------------------------------
+  describe('Suppression', () => {
+    /**
+     * Donne le bouton de suppression porté par une carte.
+     * @param card La carte de tableau visée.
+     * @returns Le bouton corbeille de cette carte.
+     * @throws Quand la carte ne porte aucun bouton de suppression.
+     */
+    function trashButtonOf(card: HTMLElement): HTMLElement {
+      const button = card.querySelector<HTMLElement>('.btn-danger');
+      if (button === null) {
+        throw new Error('La carte ne porte aucun bouton de suppression.');
+      }
+      return button;
+    }
+
+    it('T10.1 ouvre la confirmation en citant le nom du tableau visé, sans rien supprimer', async () => {
+      await render();
+
+      const targetKanban = SAMPLE[1];
+      const displayedCards = cards();
+      const trashButton = trashButtonOf(displayedCards[1]);
+      const dialogShownBeforeClick = isShown('.confirm-card');
+
+      await clickElement(trashButton);
+
+      const dialogShownAfterClick = isShown('.confirm-card');
+      const confirmMessage = normalizedTextOf('.confirm-message');
+      const writes = writeCalls();
+
+      expect(dialogShownBeforeClick).toBe(false);
+      expect(dialogShownAfterClick).toBe(true);
+      expect(confirmMessage).toBe(`Supprimer le tableau « ${targetKanban.name} » ?`);
+      expect(writes).toBe(0);
     });
   });
 });
