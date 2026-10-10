@@ -6,6 +6,13 @@
 >
 > Le bloc ci-dessous est un diagramme Mermaid `classDiagram` : il se rend directement
 > dans un aperçu Markdown compatible Mermaid (VS Code + extension, GitHub, etc.).
+>
+> **Document frère :** la fonctionnalité **Kanban** (CRUD des tableaux) a sa propre vue dans
+> [`DIAGRAMME_CLASSES_KANBAN.md`](DIAGRAMME_CLASSES_KANBAN.md) — ajoutée le 2026-10-10. Les deux
+> domaines ne partagent que la couche base (`SqliteService`) et `ConfirmDialog`, d'où deux
+> documents. C'est aussi là que la **couche base partagée** (`SqliteService` / `DatabaseService` /
+> `SchemaMigrationService`) est dessinée : le `NotesService` de la §1 ci-dessous en décrit encore
+> la version **antérieure**, qui portait elle-même la connexion SQLite.
 
 ## 1. Diagramme
 
