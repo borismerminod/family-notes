@@ -1,0 +1,96 @@
+<div class="kanban-editor">
+
+  <!-- Navigation bar: Back · title · Save (D-E5). The back button carries '.btn-back', not
+       '.btn-cancel', which already belongs to the confirmation popup (D6). -->
+  <header class="editor-navbar">
+    <button
+      type="button"
+      class="btn-nav btn-back"
+      (click)="onBack()"
+      aria-label="Retour à la liste des tableaux"
+    >
+      Retour
+    </button>
+
+    <span class="editor-navbar-title">
+      {{ editing() ? 'Modifier le tableau' : 'Nouveau tableau' }}
+    </span>
+
+    @if (!isLoading() && !loadError() && !notFound()) {
+      <button type="button" class="btn-nav btn-save" (click)="onSave()">Enregistrer</button>
+    }
+  </header>
+
+  <!-- Failed save: a visible message, never left in the console alone (D-E9). -->
+  @if (saveError()) {
+    <p class="action-error" role="alert">{{ saveError() }}</p>
+  }
+
+  @if (isLoading()) {
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  } @else if (notFound()) {
+    <!-- Unknown identifier: the board is named as missing and the user is given a way back,
+         rather than being taken to the list on their own (D-E4, revised on 2026-10-11). -->
+    <div class="empty not-found">
+      <span class="icon icon-alert" aria-hidden="true"></span>
+      <p>Tableau introuvable.</p>
+
+      <div class="error-actions">
+        <button type="button" class="btn-back-to-list" (click)="goToList()">
+          Revenir à la liste
+        </button>
+      </div>
+    </div>
+  } @else if (loadError()) {
+    <!-- Load error: 'Réessayer' reads the board again, 'Revenir à la liste' goes back with no
+         question asked — there is no typed name to lose (D3). -->
+    <div class="empty error-state">
+      <span class="icon icon-alert" aria-hidden="true"></span>
+      <p>Impossible de charger ce tableau.</p>
+
+      <div class="error-actions">
+        <button type="button" class="btn-retry" (click)="onRetry()">Réessayer</button>
+        <button type="button" class="btn-back-to-list" (click)="goToList()">
+          Revenir à la liste
+        </button>
+      </div>
+    </div>
+  } @else {
+    <!-- Header: the board name. Empty on a brand new board, 'Sans titre' being a mere hint —
+         the fallback on that name happens on save (D-E2). -->
+    <div class="editor-head">
+      <label class="sr-only" for="kanban-editor-name">Nom du tableau</label>
+      <input
+        id="kanban-editor-name"
+        type="text"
+        class="editor-name"
+        [value]="name()"
+        (input)="name.set($any($event.target).value)"
+        placeholder="Sans titre"
+      />
+    </div>
+
+    <!-- Board content area, empty in this batch: the anchor point of the lists and the cards
+         of the next one (D-E11). -->
+    <div class="board-canvas">
+      <div class="ghost-column">
+        <span class="icon icon-kanban" aria-hidden="true"></span>
+        Ce tableau est vide.
+        <small>Les listes et les cartes arriveront dans un prochain lot.</small>
+      </div>
+      <div class="ghost-column faded"></div>
+    </div>
+  }
+
+  <!-- Giving up an unsaved name: the very popup the deletions use (US4, D2). -->
+  <app-confirm-dialog
+    message="Vos modifications ne seront pas enregistrées. Quitter ce tableau ?"
+    [(open)]="confirmOpen"
+    confirmLabel="Quitter"
+    cancelLabel="Annuler"
+    (answered)="onLeaveConfirmed($event)"
+  />
+
+</div>

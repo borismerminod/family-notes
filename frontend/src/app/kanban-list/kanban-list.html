@@ -14,7 +14,7 @@
     </div>
   } @else if (loadError()) {
     <div class="empty error-state">
-      <span class="material-icons">error_outline</span>
+      <span class="icon icon-alert" aria-hidden="true"></span>
       <p>Impossible de charger les tableaux.</p>
       <button type="button" class="btn-retry" (click)="loadKanbans()">Réessayer</button>
     </div>
@@ -38,7 +38,7 @@
         </article>
       } @empty {
         <div class="empty">
-          <span class="material-icons">view_kanban</span>
+          <span class="icon icon-kanban" aria-hidden="true"></span>
           <p>Aucun tableau pour l'instant.<br>Touchez « + » pour en créer un.</p>
         </div>
       }

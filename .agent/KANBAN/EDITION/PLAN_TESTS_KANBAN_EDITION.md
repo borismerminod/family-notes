@@ -105,6 +105,7 @@ cartes ; ce lot pose seulement leur emplacement.
 | E18 | La popup est fermée |
 | E19 | Plus de modification en attente : le retour ne pose plus de question |
 | E20 | La zone de contenu du tableau est présente et vide, sans aucun appel au service |
+| E21 | Le bloc « Tableau introuvable. » est affiché (message + « Revenir à la liste »), **sans** champ de nom ni « Enregistrer » |
 
 ### Graphe
 
@@ -145,7 +146,7 @@ flowchart LR
     B1 --> E5[/E5 champ pre-rempli + Modifier le tableau/]
     C4 --> B2
     C5 -- NON --> B2
-    B2 --> E14[/E14 retour a la liste/]
+    B2 --> E21[/E21 bloc Tableau introuvable/]
     C4 -- NON --> E7[/E7 bloc erreur de chargement/]
     C4 -- NON --> E13[/E13 aucune ecriture/]
     E4 --> E20[/E20 zone de contenu vide/]
@@ -252,14 +253,15 @@ lequel C1 est toujours vraie.
 | E11 renommage demandé | | | | | | | | | | | | X | X | | | | | |
 | E12 « Sans titre » transmis | | | | | | | | | | | X | | X | | | | | |
 | E13 aucune écriture | | | | X | X | X | X | X | X | | | | | | X | X | X | X |
-| E14 retour à la liste | | | | | | X | | | X | X | X | X | X | | X | | | X |
+| E14 retour à la liste | | | | | | | | | X | X | X | X | X | | X | | | X |
+| E21 bloc « introuvable » | | | | | | X | | | | | | | | | | | | |
 | E15 écran maintenu, saisie intacte | | | | | | | | | | | | | | X | | X | X | |
 | E16 bandeau d'échec | | | | | | | | | | | | | | X | | | | |
 | E17 popup d'abandon | | | | | | | | | | | | | | | | X | | |
 | E18 popup fermée | | | | | | | | | | | | | | | | | X | |
 | E19 plus de modif. en attente | | | | | | | | | | X | X | X | X | | | | | |
 | E20 zone de contenu vide | | | | X | X | | | | | | | | | | | | | |
-| **Cas dérivés** | T1.3 | T1.1 | T1.2 | T2.1–T2.5 T10.1 | T3.1–T3.5 T10.2 | T4.1 | T4.2 T4.5 | T4.4 | T4.3 | T5.1 T5.4 T5.5 | T5.2 T5.3 | T6.1 T6.2 T6.4 T6.5 T9.6 | T6.3 | T7.1–T7.6 T9.7 | T8.1–T8.5 | T9.1 T9.8 | T9.2 T9.3 T9.4 | T9.5 |
+| **Cas dérivés** | T1.3 | T1.1 | T1.2 | T2.1–T2.5 T10.1 | T3.1–T3.5 T10.2 | T4.1 T4.1b | T4.2 T4.5 | T4.4 | T4.3 | T5.1 T5.4 T5.5 | T5.2 T5.3 | T6.1 T6.2 T6.4 T6.5 T9.6 | T6.3 | T7.1–T7.6 T9.7 | T8.1–T8.5 | T9.1 T9.8 | T9.2 T9.3 T9.4 | T9.5 |
 
 > **La colonne R8 décrit une transition**, pas un état stable : `C4` y est fausse parce que c'est
 > l'échec de la lecture qui a amené l'utilisateur sur le bloc d'erreur, et `C12` est vraie parce
@@ -302,7 +304,7 @@ Elles sont **à confirmer** avant `ecrire_tests`.
   trancher » qui vient d'être tranchée ici.
 - **D4 — « Réessayer » relance la seule lecture** *(à confirmer)* : même chemin que le chargement
   initial (`getKanbanById` sur l'identifiant de la route), sans rechargement de l'écran ni de la
-  page. Un `null` au second essai se comporte comme au premier : retour à la liste (`D-E4`).
+  page. Un `null` au second essai se comporte comme au premier : le bloc « Tableau introuvable. » (`D-E4`).
 - **D5 — Nom de départ rafraîchi avant la navigation** *(à confirmer)* : après une écriture
   réussie, le nom enregistré devient le nom de départ **avant** l'appel au routeur. C'est ce qui
   rend E19 observable dans un test où le routeur est espionné et où le composant reste donc monté
@@ -366,8 +368,11 @@ Chaque cas décrit **un** comportement observable ; entre parenthèses : user st
 
 #### Groupe 4 — Identifiant inexistant et erreur de chargement
 
-- **T4.1** Un identifiant ne correspondant à aucun tableau ramène à la liste, **sans** message
-  d'erreur ni popup de confirmation. *(US1 · R6)*
+- **T4.1** Un identifiant ne correspondant à aucun tableau affiche « Tableau introuvable. » et un
+  bouton « Revenir à la liste », **sans** navigation spontanée, sans bloc d'erreur de chargement et
+  sans popup de confirmation. *(US1 · R6)* *(Révisé le 2026-10-11 : la version précédente attendait
+  un retour immédiat à la liste, sans message — cf. `D-E4`.)*
+- **T4.1b** « Revenir à la liste » depuis l'état « introuvable » ramène à la liste. *(US1 · R6)*
 - **T4.2** Si la lecture échoue, « Impossible de charger ce tableau. » est affiché, l'indicateur de
   chargement est retiré, et **ni** champ de nom **ni** bouton « Enregistrer » ne sont affichés :
   l'écran ne reste jamais bloqué sur son indicateur. *(US1 · R7)*
@@ -484,9 +489,10 @@ composant devra les honorer.
 | `.btn-save` | Bouton « Enregistrer », jamais désactivé (`D-E2`) | T5.x, T6.x, T7.x |
 | `.editor-name` | Champ de saisie du nom (`input[type="text"]`, `placeholder="Sans titre"`), relié à son étiquette | T2.1, T3.2, T4.2, T5.x, T6.x, T7.2, T8.x, T9.x |
 | `.loading-overlay` / `.spinner` | Indicateur de chargement | T2.3, T3.4, T4.2 |
+| `.not-found` | Bloc « Tableau introuvable. » d'un identifiant inexistant (`D-E4`) | T4.1, T4.1b |
 | `.error-state` | Bloc d'erreur de chargement | T4.2, T4.4 |
 | `.btn-retry` | « Réessayer » dans le bloc d'erreur (`D3`) | T4.4 |
-| `.btn-back-to-list` | « Revenir à la liste » dans le bloc d'erreur (`D3`) | T4.3 |
+| `.btn-back-to-list` | « Revenir à la liste », dans le bloc d'erreur (`D3`) comme dans le bloc « introuvable » (`D-E4`) | T4.1b, T4.3 |
 | `.action-error` avec `role="alert"` | Bandeau d'échec d'enregistrement | T7.3, T7.4, T7.5 |
 | `.board-canvas` | Zone de contenu du tableau | T10.1, T10.2 |
 | `.ghost-column` | Bloc vide légendé, annonçant les listes à venir | T10.1, T10.2 |

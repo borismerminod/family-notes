@@ -163,8 +163,9 @@
   color: var(--text-2);
 }
 
-.empty .material-icons {
-  font-size: 54px;
+.empty .icon {
+  width: 54px;
+  height: 54px;
   opacity: .4;
 }
 
@@ -175,7 +176,10 @@
 }
 
 /* ---- État d'erreur de chargement ---- */
-.error-state .material-icons { color: var(--danger); }
+.error-state .icon {
+  color: var(--danger);
+  opacity: 1;
+}
 
 .btn-retry {
   margin-top: 16px;
@@ -226,6 +230,8 @@
 }
 
 .icon-plus { --icon: url("/icons/plus.svg"); }
+.icon-alert { --icon: url("/icons/alert.svg"); }
+.icon-kanban { --icon: url("/icons/kanban.svg"); }
 
 /* ---- Bouton d'action sur une carte ---- */
 .btn-icon {

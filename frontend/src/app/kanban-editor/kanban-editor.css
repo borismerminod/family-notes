@@ -1,0 +1,285 @@
+/* ============================================================
+   Kanban board editor — stylesheet (mobile-first)
+   Mockup: .agent/KANBAN/EDITION/MAQUETTE_KANBAN_EDITOR.html (screen 1)
+   Tokens aligned on kanban-list.css / note-list.css (redeclared, as they are not global).
+
+   Icons: the project's own SVG files (frontend/public/icons) drawn as masks, the
+   way the board list does it — no Material Icons font, which is loaded nowhere
+   in the application.
+   ============================================================ */
+
+:host {
+  /* Palette (aligned on NOTE_COLOR_PALETTE / block-style.model.ts) */
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --danger: #ff3b30;
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #ffffff;
+    --text-2: #98989f;
+    --separator: #38383a;
+  }
+}
+
+.kanban-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ---- Navigation bar: Back · title · Save (D-E5) ---- */
+.editor-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(14px + var(--safe-top)) 12px 10px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.btn-nav {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.btn-nav:active { opacity: .6; }
+
+.btn-nav.btn-save { font-weight: 700; }
+
+.editor-navbar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Failed save banner (US5, D-E9) ---- */
+.action-error {
+  flex: 0 0 auto;
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---- Header: the board name ---- */
+.editor-head {
+  flex: 0 0 auto;
+  padding: 18px 20px 16px;
+  background: var(--surface);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.editor-name {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  padding: 0;
+}
+
+.editor-name::placeholder {
+  color: var(--text-2);
+  opacity: .6;
+}
+
+/* Focus underline: shows the field is active without boxing the title in */
+.editor-head:focus-within {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* Label read by screen readers, invisible to the eye (accessibility) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Loading (taken from kanban-list.css) ---- */
+.loading-overlay {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-overlay .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Unknown identifier and load error states (taken from kanban-list.css) ---- */
+.empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 30px;
+  color: var(--text-2);
+}
+
+.empty p {
+  font-size: 15px;
+  margin: 12px 0 0;
+  line-height: 1.4;
+}
+
+.empty .icon {
+  width: 54px;
+  height: 54px;
+  opacity: .4;
+}
+
+/* The load error is the only state drawing its icon in the danger colour, at full strength: a
+   missing board is an answer, a failed read is a fault. */
+.error-state .icon {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.btn-retry,
+.btn-back-to-list {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .1s ease, opacity .2s;
+}
+
+.btn-retry {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-back-to-list {
+  background: var(--separator);
+  color: var(--text);
+}
+
+.btn-retry:active,
+.btn-back-to-list:active { transform: scale(0.96); }
+
+.btn-retry:hover,
+.btn-back-to-list:hover { opacity: .92; }
+
+/* ---- Board content area, empty in this batch (D-E11) ---- */
+.board-canvas {
+  flex: 1 1 auto;
+  display: flex;
+  gap: 12px;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+  overflow: hidden;
+}
+
+.ghost-column {
+  flex: 0 0 200px;
+  border: 2px dashed var(--separator);
+  border-radius: var(--radius);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.ghost-column small {
+  font-size: 12px;
+  opacity: .8;
+}
+
+.ghost-column.faded {
+  opacity: .45;
+}
+
+/* ---- SVG icons (drawn as masks, so the colour follows the text), as on the list ---- */
+.icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.ghost-column .icon {
+  width: 40px;
+  height: 40px;
+  opacity: .4;
+}
+
+.icon-kanban { --icon: url("/icons/kanban.svg"); }
+.icon-alert { --icon: url("/icons/alert.svg"); }

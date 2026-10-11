@@ -185,7 +185,7 @@ Aucune doublure de service / route / navigation nécessaire.
 
 Ce composant **rapatrie** et rend vérifiables les Groupes 6 (mise en forme, ex-`execCommand`),
 7 (image) et 8 (vidéo) de `note-editor.spec.ts`. Quand le `NoteEditor` adoptera la barre (lot
-suivant, `dev_par_groupes`), ces groupes y deviendront **obsolètes** et seront remplacés par un
+suivant, `dev_par_cas`), ces groupes y deviendront **obsolètes** et seront remplacés par un
 test d'intégration « la barre est présente et sa sortie est réinjectée dans `.editor-content` ».
 **Ce lot ne modifie pas `note-editor.spec.ts`.**
 

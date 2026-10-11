@@ -58,8 +58,9 @@ visuel des lots suivants.
   existant ; retour à la liste en cas de succès, maintien sur l'écran avec message en cas d'échec.
 - Bouton de **retour** à la liste, avec confirmation lorsque des modifications ne sont pas
   enregistrées.
-- Traitement d'un **identifiant inexistant** dans la route : pas d'erreur bloquante, l'utilisateur
-  est ramené à la liste.
+- Traitement d'un **identifiant inexistant** dans la route : pas d'erreur bloquante, l'écran
+  annonce que le tableau est introuvable et offre un retour à la liste *(révisé le 2026-10-11 :
+  la première version ramenait l'utilisateur à la liste sans rien dire)*.
 - Zone de contenu du tableau **vide**, réservée aux listes et aux cartes des lots suivants.
 
 **Hors périmètre (lots ultérieurs) :**
@@ -86,8 +87,9 @@ visuel des lots suivants.
     - Pendant le chargement du tableau, un indicateur de chargement est affiché.
     - La zone de contenu du tableau est visible mais vide, avec une indication que les listes
       viendront plus tard.
-    - Si l'identifiant de la route ne correspond à aucun tableau, l'écran ne plante pas :
-      l'utilisateur est ramené à la liste des tableaux.
+    - Si l'identifiant de la route ne correspond à aucun tableau, l'écran ne plante pas : il
+      affiche « Tableau introuvable. » et un bouton pour revenir à la liste des tableaux
+      *(révisé le 2026-10-11)*.
     - Si le chargement échoue, un message d'erreur est affiché et l'utilisateur peut revenir à la
       liste.
 

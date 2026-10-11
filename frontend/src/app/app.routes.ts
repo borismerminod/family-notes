@@ -3,6 +3,7 @@ import {NoteList} from './note-list/note-list';
 import { NoteEditor } from './note-editor/note-editor';
 import { Calendar } from './calendar/calendar';
 import { KanbanList } from './kanban-list/kanban-list';
+import { KanbanEditor } from './kanban-editor/kanban-editor';
 
 export const routes: Routes = [
   {
@@ -24,9 +25,20 @@ export const routes: Routes = [
     component: NoteEditor
   },
   {
-    // Liste des tableaux kanban : pas de route de création, la saisie du nom se fait en popup (D-K2).
+    // Liste des tableaux kanban : la saisie du nom se fait dans l'écran d'édition, que « + » et
+    // le clic sur une carte ouvrent par les deux routes ci-dessous (D-K3 et D-K9 révisées).
     path: 'kanban',
     component: KanbanList
+  },
+  {
+    // Création d'un tableau : pas de paramètre id → KanbanEditor démarre vierge (D-E8).
+    path: 'kanban/new',
+    component: KanbanEditor
+  },
+  {
+    // Édition d'un tableau existant : le KanbanEditor lit :id via paramMap (D-E8).
+    path: 'kanban/edit/:id',
+    component: KanbanEditor
   },
   {
     path: '',

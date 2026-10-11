@@ -70,13 +70,26 @@ Ils s'enchaînent dans l'ordre du cycle de développement :
 | [`formaliser_demande`](skill/formaliser_demande/SKILL.md) | Besoin oral → `FEATURE_*.md` validé |
 | [`approche_dev`](skill/approche_dev/SKILL.md) | SPEC → `APPROCHE_*.md` (diagramme de classes + algos) |
 | [`plan_test`](skill/plan_test/SKILL.md) | Co-construction Cause-Effet → `PLAN_TESTS_*.md` |
-| [`ecrire_tests`](skill/ecrire_tests/SKILL.md) | Plan de test → `.spec.ts` (rouge attendu), **sans** implémentation |
-| [`dev_par_groupes`](skill/dev_par_groupes/SKILL.md) | TDD : un groupe de contrôle à la fois, validé par l'utilisateur |
+| [`ecrire_tests`](skill/ecrire_tests/SKILL.md) | Plan de test → `.spec.ts`, **un cas `T#.x` à la fois** ; s'arrête au premier rouge |
+| [`dev_par_cas`](skill/dev_par_cas/SKILL.md) | Pendant de `ecrire_tests` : implémente le cas rouge jusqu'au vert, **sans** écrire de test |
+| [`tdd_cas_par_cas`](skill/tdd_cas_par_cas/SKILL.md) | Même grain, **avec relecture humaine** de chaque cas avant implémentation |
+| [`implementer_cas`](skill/implementer_cas/SKILL.md) | Pendant de `tdd_cas_par_cas` : implémente le cas relu jusqu'au vert, **sans** écrire de test |
 | [`revue_fonctionnalite`](skill/revue_fonctionnalite/SKILL.md) | Code livré → `REVUE_*.md` (constats + refactorings priorisés) |
 | [`appliquer_refactoring`](skill/appliquer_refactoring/SKILL.md) | Exécute un plan de refactoring validé, tests verts à chaque étape |
 | [`documenter_sources`](skill/documenter_sources/SKILL.md) | Ajoute les en-têtes JSDoc **en anglais** sur le code livré |
 | [`diagramme_classes`](skill/diagramme_classes/SKILL.md) | Met à jour les `DIAGRAMME_CLASSES_*.md` d'après le code réel |
 | [`superviser_realisation`](skill/superviser_realisation/SKILL.md) | Orchestre toute la chaîne en déléguant chaque étape à un sous-agent |
+
+**Deux paires pour la phase TDD, au même grain (le cas `T#.x`), selon qui relit le code :**
+
+| Paire | Boucle | Quand l'employer |
+|---|---|---|
+| `ecrire_tests` ⇄ `dev_par_cas` | alternance **pilotée par un superviseur** — l'agent de `superviser_realisation`, ou l'utilisateur qui lance les sessions lui-même ; aucun arrêt pour relecture | l'utilisateur **ne relit pas** le code et veut que la paire déroule le plan jusqu'au bout |
+| `tdd_cas_par_cas` ⇄ `implementer_cas` | arrêt à **chaque cas** pour relecture humaine avant implémentation | l'utilisateur veut **rester près du code** et valider chaque cas |
+
+Dans les deux paires, la frontière est la même : le skill de test n'écrit **aucune** implémentation
+(pas même un squelette de cible), le skill de dev ne touche **jamais** au `.spec.ts`. Les deux
+demandent en ouverture **qui lance la commande de test**.
 
 ## 4. Implémentation
 

@@ -301,7 +301,7 @@ listes/cartes du kanban.
 comme chantier « hygiène des services SQLite », ou à laisser tels quels. C9 est un ajustement de
 journalisation qui touche `SqliteService` ou la frontière d'erreur du service : à ne faire que si
 le bruit console gêne. C14 (`getKanbanById`) est un **ajout de fonctionnalité** pour le lot 3, pas
-un refactoring : il se traite en TDD via `dev_par_groupes`.
+un refactoring : il se traite en TDD via `dev_par_cas`.
 
 **Rappel de méthode :** R3 et R4 **ajoutent** un comportement observable (un libellé qui disparaît,
 un bandeau qui s'efface). Au sens strict du skill `appliquer_refactoring`, ce ne sont donc pas des

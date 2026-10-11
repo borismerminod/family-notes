@@ -7,7 +7,7 @@ description: Met en œuvre un plan de refactoring validé (REVUE_*.md) pour amé
 
 > **But :** exécuter un **plan de refactoring déjà validé** (`REVUE_<NOM>.md`) pour améliorer
 > la qualité du code livré, **sans modifier le comportement observable**. La **suite de tests
-> unitaires** — verte à la sortie de [`dev_par_groupes`](../dev_par_groupes/SKILL.md) — est le
+> unitaires** — verte à la sortie de [`dev_par_cas`](../dev_par_cas/SKILL.md) — est le
 > **filet de sécurité** : elle doit rester verte à chaque étape. Suite naturelle du skill
 > [`revue_fonctionnalite`](../revue_fonctionnalite/SKILL.md).
 >
@@ -26,7 +26,7 @@ description: Met en œuvre un plan de refactoring validé (REVUE_*.md) pour amé
 - Un **plan de refactoring validé** : `.agent/REVUE_<NOM>.md` avec des constats `C#`, des
   refactorings `R#` **priorisés**, leurs fichiers touchés et leur **filet** (tests couvrants).
   Sinon, produire d'abord la revue via [`revue_fonctionnalite`](../revue_fonctionnalite/SKILL.md).
-- Une **suite de tests verte** à l'état initial (fin de `dev_par_groupes`). C'est la
+- Une **suite de tests verte** à l'état initial (fin de `dev_par_cas`). C'est la
   référence : le refactoring ne doit pas la faire régresser.
 - Connaître les docs de cadrage (`FEATURE_*.md`, `APPROCHE_*.md`, `PLAN_TESTS_*.md`) pour ne
   pas contredire une décision `D#` déjà actée, et la mémoire projet (conventions, pièges).
@@ -72,7 +72,7 @@ Réaliser **uniquement** le `R#` ciblé, en respectant les décisions `D#` et le
   changement cohérent. Ce qui déborde est un autre `R#` (ou un constat à ajouter au plan).
 - **Comportement identique** : extraire/renommer/déplacer/dédupliquer, pas ajouter ni retirer
   de fonctionnalité. Si une transformation **change** le comportement, ce n'est pas un
-  refactoring : le sortir de ce skill et le traiter en TDD via `dev_par_groupes`.
+  refactoring : le sortir de ce skill et le traiter en TDD via `dev_par_cas`.
 - **Ne pas affaiblir le filet** : on **ne modifie pas** un `.spec.ts` pour faire passer un
   refactoring. Exception légitime : le refactoring change une frontière **contractuelle** déjà
   actée (ex. sélecteur du **Contrat DOM**, signature publique) — dans ce cas, **le signaler

@@ -105,7 +105,7 @@ simple note de traçabilité.
 
 Retirer le bloc `.format-toolbar::-webkit-scrollbar { display: none; }`
 ([`rich-text-editor.css:22`](../../frontend/src/app/rich-text-editor/rich-text-editor.css:22)).
-**Fichier :** `rich-text-editor.css`. **Filet :** rendu visuel (`dev_par_groupes` étape 4,
+**Fichier :** `rich-text-editor.css`. **Filet :** rendu visuel (`dev_par_cas` étape 4,
 Browser pane) — aucun test unitaire concerné. **Priorité :** haute (trivial). **Effort :** ~1 min.
 
 ### R2 ← C2 — Retirer le `.trim()` redondant *(quick win, risque nul)*

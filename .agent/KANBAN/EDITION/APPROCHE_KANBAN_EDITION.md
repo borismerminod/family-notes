@@ -21,7 +21,7 @@ sans qu'il existe (constat `C11`). Il ferme `US2` et `US4` du lot `CRUD`, resté
 | D-E1 | H2 — après un enregistrement réussi | **Retour à la liste** `/kanban` dans les deux cas (création et renommage), par symétrie avec l'éditeur de notes (`D3`). À revoir quand les listes et les cartes arriveront. |
 | D-E2 | H3 — nom par défaut | Champ **vide** à l'ouverture d'un tableau neuf, « Sans titre » en **placeholder**. Le repli sur « Sans titre » se fait **à l'enregistrement**, dans le composant. Le bouton d'enregistrement n'est **jamais désactivé**. |
 | D-E3 | H5 — détection d'une modification en attente | **Comparaison du nom affiché au nom de départ** (vide en création, nom en base en édition), sur les valeurs **nettoyées des espaces de début et de fin**. Conséquences : retaper exactement le même nom ne compte pas comme une modification, et n'ajouter que des espaces non plus. *(Tranché le 2026-10-10.)* |
-| D-E4 | US1 — identifiant inexistant dans la route | **Retour immédiat à la liste, sans message** dès que la lecture ne renvoie aucun tableau. **Écart assumé** avec l'éditeur de notes, qui affiche « Note introuvable » (`D5`) : la SPEC demande ici que l'utilisateur soit *ramené à la liste*. *(Tranché le 2026-10-10.)* |
+| D-E4 | US1 — identifiant inexistant dans la route | **Message « Tableau introuvable. » et bouton « Revenir à la liste »**, sur le modèle de l'éditeur de notes (`D5`). L'écran ne navigue pas de lui-même : c'est l'utilisateur qui repart. *(Tranché le 2026-10-10 comme un retour immédiat sans message ; **révisé le 2026-10-11** — la redirection silencieuse se lisait comme un bug, l'utilisateur ne voyant pas pourquoi son geste le ramenait à la liste.)* |
 | D-E5 | H7 — titre de l'écran | « **Nouveau tableau** » en création, « **Modifier le tableau** » en édition, dans une barre de navigation calquée sur celle de l'éditeur de notes (*Annuler · titre · Enregistrer*). |
 | D-E6 | H6 — bouton « retour » matériel d'Android | **Hors périmètre** : l'avertissement d'`US4` ne couvre que le bouton de retour **de l'écran**. L'application n'intercepte pas le bouton matériel, et ce lot ne change rien à cela. |
 | D-E7 | C14 — lecture unitaire | Ajout de **`getKanbanById(id): Promise<Kanban \| null>`** à `KanbanService`, sur le modèle de `getNoteById` (`null` quand aucune ligne ne correspond). C'est un **ajout de fonctionnalité écrit en TDD**, pas un refactoring. |
@@ -140,7 +140,7 @@ Pas de migration, donc pas de `npm run build` + `npx cap sync` imposés par un c
 | `KanbanEditor` utilise `KanbanService` | L'écran lit le tableau à éditer, puis appelle `createKanban` **ou** `renameKanban` selon le mode. Il ne touche jamais la base directement. |
 | `KanbanEditor` contient `ConfirmDialog` | Même popup que les suppressions (note ou tableau), ici pour confirmer l'**abandon d'une saisie** non enregistrée (`US4`). |
 | `KanbanEditor` utilise `ActivatedRoute` | Lecture de `:id` **une seule fois** à l'initialisation (`snapshot.paramMap`), comme `NoteEditor` : l'écran n'est jamais réutilisé pour un autre tableau sans être recréé. |
-| `KanbanEditor` utilise `Router` | Retour à `/kanban` : après un enregistrement réussi (D-E1), après une confirmation d'abandon (`US4`), et sur identifiant inexistant (D-E4). |
+| `KanbanEditor` utilise `Router` | Retour à `/kanban` : après un enregistrement réussi (D-E1), après une confirmation d'abandon (`US4`), et sur les boutons de retour de l'écran — barre de navigation, « Revenir à la liste » des états « introuvable » (D-E4) et « erreur de chargement » (D3). |
 | `KanbanList` ouvre `KanbanEditor` | Par la route seulement (`/kanban/new`, `/kanban/edit/:id`) : aucune dépendance de code entre les deux composants. |
 
 ---
@@ -192,8 +192,9 @@ existant ne peut rien afficher (constat `C14`).*
 - — j'affiche un **indicateur de chargement** et je demande le tableau au service (lot A) ;
 - — **si je reçois un tableau**, je remplis le champ avec son nom et je retiens ce nom comme **nom
   de départ**, puis je retire l'indicateur de chargement ;
-- — **si je reçois `null`** (identifiant inexistant), je ne montre aucune erreur et je **navigue
-  vers `/kanban`** (D-E4) ;
+- — **si je reçois `null`** (identifiant inexistant), je retire l'indicateur de chargement et
+  j'affiche « **Tableau introuvable.** » avec un bouton « Revenir à la liste » : je ne navigue pas
+  de moi-même (D-E4, révisé le 2026-10-11) ;
 - — **si la lecture échoue**, je retire l'indicateur de chargement, j'affiche un message d'erreur
   de chargement, et je laisse un **bouton de retour** vers la liste : l'écran ne reste jamais bloqué
   sur son spinner ;
@@ -278,9 +279,10 @@ listes et les cartes.
 - **Démonstrabilité du lot `CRUD`** : avec ces deux routes, « + » et le clic sur une carte cessent
   de retomber sur « Mes Notes » (`C11`). C'est la première fois que le parcours Kanban est
   démontrable à la main de bout en bout.
-- **Écart assumé avec l'éditeur de notes** sur deux points, à ne pas « corriger » par réflexe de
-  symétrie : l'identifiant inexistant ramène à la liste au lieu d'afficher « introuvable » (D-E4),
-  et l'échec d'enregistrement affiche un message au lieu de rester dans la console (D-E9).
+- **Écart assumé avec l'éditeur de notes** sur un point, à ne pas « corriger » par réflexe de
+  symétrie : l'échec d'enregistrement affiche un message au lieu de rester dans la console (D-E9).
+  L'identifiant inexistant, lui, s'aligne depuis le 2026-10-11 sur « introuvable » (D-E4), avec en
+  plus un bouton de retour que l'éditeur de notes n'a pas.
 - **Nom de départ et enregistrement réussi** : remettre le nom de départ à jour **avant** de
   naviguer rend le critère « plus de modification en attente » d'`US4` observable, y compris dans un
   test où le routeur est espionné et où le composant reste donc monté. C'est le détail

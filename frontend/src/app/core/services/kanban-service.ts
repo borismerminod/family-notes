@@ -29,6 +29,23 @@ export class KanbanService extends SqliteService {
   }
 
   /**
+   * Retrieves a single board from its identifier, which is what the edit screen opens on (US1,
+   * US3; see APPROCHE_KANBAN_EDITION.md, D-E7). A board that does not exist is not an error but an
+   * answer: `null` is returned, on the model of `getNoteById`.
+   * @param id The identifier of the board to read.
+   * @returns A promise resolving to the board, or to `null` when no board carries that identifier.
+   */
+  async getKanbanById(id: string): Promise<Kanban | null> {
+    return this.runQuery('Erreur lors de la récupération du kanban', async () => {
+      const res = await this.db.query('SELECT id, name, updated_at FROM kanbans WHERE id = ?', [
+        id,
+      ]);
+      const rows = res.values ?? [];
+      return rows.length === 0 ? null : this.mapRowToKanban(rows[0]);
+    });
+  }
+
+  /**
    * Creates a board with the given name (US2). The name is stored without its leading and trailing
    * spaces, inner spaces being part of the name; two boards may share the same name (D-K4).
    * @param name The name entered by the user.
