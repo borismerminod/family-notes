@@ -261,7 +261,7 @@ lequel C1 est toujours vraie.
 | E18 popup fermée | | | | | | | | | | | | | | | | | X | |
 | E19 plus de modif. en attente | | | | | | | | | | X | X | X | X | | | | | |
 | E20 zone de contenu vide | | | | X | X | | | | | | | | | | | | | |
-| **Cas dérivés** | T1.3 | T1.1 | T1.2 | T2.1–T2.5 T10.1 | T3.1–T3.5 T10.2 | T4.1 T4.1b | T4.2 T4.5 | T4.4 | T4.3 | T5.1 T5.4 T5.5 | T5.2 T5.3 | T6.1 T6.2 T6.4 T6.5 T9.6 | T6.3 | T7.1–T7.6 T9.7 | T8.1–T8.5 | T9.1 T9.8 | T9.2 T9.3 T9.4 | T9.5 |
+| **Cas dérivés** | T1.3 | T1.1 | T1.2 | T2.1–T2.5 T10.1 | T3.1–T3.5 T10.2 | T4.1 T4.1b | T4.2 T4.5 | T4.4 | T4.3 | T5.1 T5.4 T5.5 | T5.2 T5.3 | T6.1 T6.2 T6.4 T9.6 | T6.3 | T7.1–T7.6 T9.7 | T8.1–T8.5 | T9.1 T9.8 | T9.2 T9.3 T9.4 | T9.5 |
 
 > **La colonne R8 décrit une transition**, pas un état stable : `C4` y est fausse parce que c'est
 > l'échec de la lecture qui a amené l'utilisateur sur le bloc d'erreur, et `C12` est vraie parce
@@ -398,10 +398,14 @@ Chaque cas décrit **un** comportement observable ; entre parenthèses : user st
   *(US3 · R12)*
 - **T6.2** Aucune création n'est demandée en mode édition. *(US3 · R12)*
 - **T6.3** Champ vidé par l'utilisateur : le tableau est renommé « Sans titre ». *(US3 · R13)*
-- **T6.4** Enregistrer **sans avoir touché au nom** demande quand même le renommage, avec le nom
-  inchangé : le tableau garde son nom et sa date de modification est rafraîchie — « sans effet
-  néfaste » au sens d'`US3`. *(US3 · R12)*
-- **T6.5** Après un renommage réussi, l'utilisateur est ramené à la liste. *(US3 · R12)*
+- **T6.4** Après un renommage réussi, l'utilisateur est ramené à la liste. *(US3 · R12)*
+
+> *Un cas « enregistrer sans avoir touché au nom demande quand même le renommage » figurait ici
+> sous le numéro `T6.4`, l'ancien `T6.5` portant le retour à la liste. Il a été **retiré le
+> 2026-11-03** à la relecture, jugé sans valeur suffisante, et les deux cas restants ont été
+> renumérotés. Conséquence assumée : aucun cas ne garantit plus qu'un enregistrement sans
+> changement de nom rafraîchit la date de modification — une implémentation qui court-circuiterait
+> l'écriture quand `hasPendingChanges()` est faux ne serait plus détectée.*
 
 #### Groupe 7 — Échec de l'enregistrement
 
@@ -467,7 +471,7 @@ Chaque cas décrit **un** comportement observable ; entre parenthèses : user st
 | **Navigation** | Routeur réel fourni au banc de test, sa navigation **espionnée** — exactement le montage de `kanban-list.spec.ts`, dont les tests existants ne doivent pas bouger. Les assertions portent sur la **cible** demandée (`/kanban`), pas sur un changement d'URL réel. |
 | **Identifiant de la route** | Fourni par un `ActivatedRoute` doublé, dont l'instantané rend l'identifiant en mode édition et **rien** en mode création. Lu une seule fois (`D8`). |
 | **Confirmation d'abandon** | `ConfirmDialog` **réel**, piloté par le DOM (aucune doublure) : c'est la seule façon de couvrir le clic hors popup (T9.3) et Échap (T9.4), qui sont son comportement propre. |
-| **Horloge** | Non doublée : les dates de modification viennent du service, et ce plan ne les asserte que par le fait que le renommage est demandé (T6.4) — jamais par leur valeur. |
+| **Horloge** | Non doublée : les dates de modification viennent du service, et ce plan ne les asserte que par le fait que le renommage est demandé (T6.1) — jamais par leur valeur. |
 
 **Aucune de ces dépendances ne fige de signature précise ici** : les noms exacts des méthodes et
 des entrées de composant sont ceux du diagramme de classes de l'approche, et c'est `ecrire_tests`

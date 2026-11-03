@@ -32,6 +32,15 @@ const EXISTING_KANBAN: Kanban = {
  */
 const NAME_PLACEHOLDER = 'Sans titre';
 
+/**
+ * Name a board is stored under when the field is left empty, or holds nothing but spaces
+ * (`D-E2`). It reads the same as the field hint on purpose, but it is a different thing: the hint
+ * is never sent anywhere, whereas this name is what reaches the data source. An empty name is
+ * therefore never refused by this screen, it is replaced — the service's own refusal staying a
+ * safety net this screen never trips (`D-E10`).
+ */
+const FALLBACK_SAVED_NAME = 'Sans titre';
+
 /** Screen title shown when no identifier comes from the route, i.e. a brand new board (`D2`). */
 const CREATION_SCREEN_TITLE = 'Nouveau tableau';
 
@@ -50,6 +59,12 @@ const BOARD_NOT_FOUND_MESSAGE = 'Tableau introuvable.';
 
 /** Message shown when the board could not be read at all, as opposed to not existing (`D2`). */
 const LOAD_FAILED_MESSAGE = 'Impossible de charger ce tableau.';
+
+/**
+ * Message of the banner shown when the save was refused (`D2`, `D-E9`). The screen must show it,
+ * not merely log it: a message left in the console alone never reaches the user.
+ */
+const SAVE_FAILED_MESSAGE = "Impossible d'enregistrer le tableau.";
 
 describe("KanbanEditor (écran d'édition d'un tableau)", () => {
   let fixture: ComponentFixture<KanbanEditor>;
@@ -160,6 +175,24 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
    */
   function navigations(): string[] {
     return navigateSpy.mock.calls.map((call: unknown[]) => (call[0] as unknown[]).join('/'));
+  }
+
+  /**
+   * Types a board name the way the user would, through the name field, then lets the screen
+   * update. Going through the field rather than the component signal keeps the test black-box:
+   * the binding is part of what is being checked.
+   * @param name The name to type.
+   * @throws When the name field is not on screen, which would signal an unexpected state.
+   */
+  async function typeName(name: string): Promise<void> {
+    const field = nameInput();
+    if (field === null) {
+      throw new Error('Aucun champ de nom à remplir.');
+    }
+    field.value = name;
+    field.dispatchEvent(new Event('input'));
+    await fixture.whenStable();
+    fixture.detectChanges();
   }
 
   /**
@@ -458,6 +491,322 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       expect(saveShown).toBe(false);
       expect(writesAfterRetry).toBe(0);
       expect(stillInErrorState).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 5 — Enregistrement d'un tableau neuf
+  // ---------------------------------------------------------------------------
+  describe("Enregistrement d'un tableau neuf", () => {
+    it('T5.1 demande la création avec le nom saisi sans ses espaces de début et de fin, les espaces intérieurs conservés', async () => {
+      const typedName = '   Anniversaire de   Léa  ';
+      const expectedStoredName = 'Anniversaire de   Léa';
+
+      await setup();
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      expect(kanbanService.createKanban).toHaveBeenCalledTimes(1);
+      expect(kanbanService.createKanban).toHaveBeenCalledWith(expectedStoredName);
+    });
+
+    it('T5.2 crée le tableau sous le nom « Sans titre » quand le champ est laissé vide', async () => {
+      await setup();
+      await render();
+
+      const fieldBeforeSave = nameInput();
+      const valueBeforeSave = fieldBeforeSave?.value;
+
+      await clickOn('.btn-save');
+
+      expect(valueBeforeSave).toBe('');
+      expect(kanbanService.createKanban).toHaveBeenCalledTimes(1);
+      expect(kanbanService.createKanban).toHaveBeenCalledWith(FALLBACK_SAVED_NAME);
+    });
+
+    it("T5.3 crée le tableau sous le nom « Sans titre » quand le nom saisi n'est fait que d'espaces", async () => {
+      const spacesOnlyName = '    ';
+
+      await setup();
+      await render();
+      await typeName(spacesOnlyName);
+
+      const fieldBeforeSave = nameInput();
+      const valueBeforeSave = fieldBeforeSave?.value;
+
+      await clickOn('.btn-save');
+
+      expect(valueBeforeSave).toBe(spacesOnlyName);
+      expect(kanbanService.createKanban).toHaveBeenCalledTimes(1);
+      expect(kanbanService.createKanban).toHaveBeenCalledWith(FALLBACK_SAVED_NAME);
+    });
+
+    it('T5.4 ne demande aucun renommage en mode création : la création est la seule écriture', async () => {
+      const typedName = 'Anniversaire de Léa';
+
+      await setup();
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const writesOnSave = writeCalls();
+
+      expect(kanbanService.renameKanban).not.toHaveBeenCalled();
+      expect(kanbanService.createKanban).toHaveBeenCalledTimes(1);
+      expect(writesOnSave).toBe(1);
+    });
+
+    it('T5.5 ramène à la liste après une création réussie', async () => {
+      const typedName = 'Anniversaire de Léa';
+
+      await setup();
+      await render();
+      await typeName(typedName);
+
+      const navigationsBeforeSave = navigations();
+
+      await clickOn('.btn-save');
+
+      const navigationsAfterSave = navigations();
+
+      expect(navigationsBeforeSave).toEqual([]);
+      expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 6 — Enregistrement d'un tableau existant
+  // ---------------------------------------------------------------------------
+  describe("Enregistrement d'un tableau existant", () => {
+    it("T6.1 demande le renommage sur l'identifiant de la route, avec le nom nettoyé", async () => {
+      const routeIdentifier = 'k-de-la-route';
+      const boardCarryingAnotherIdentifier: Kanban = {
+        ...EXISTING_KANBAN,
+        id: 'k-de-la-source',
+      };
+      const readBoard = vi.fn().mockResolvedValue(boardCarryingAnotherIdentifier);
+      const typedName = '  Travaux du   garage  ';
+      const expectedStoredName = 'Travaux du   garage';
+
+      await setup({ id: routeIdentifier, getKanbanById: readBoard });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      expect(kanbanService.renameKanban).toHaveBeenCalledTimes(1);
+      expect(kanbanService.renameKanban).toHaveBeenCalledWith(routeIdentifier, expectedStoredName);
+    });
+
+    it('T6.2 ne demande aucune création en mode édition : le renommage est la seule écriture', async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const writesOnSave = writeCalls();
+
+      expect(kanbanService.createKanban).not.toHaveBeenCalled();
+      expect(kanbanService.renameKanban).toHaveBeenCalledTimes(1);
+      expect(writesOnSave).toBe(1);
+    });
+
+    it("T6.3 renomme le tableau « Sans titre » quand l'utilisateur vide le champ", async () => {
+      const emptiedName = '';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+
+      const fieldOnceLoaded = nameInput();
+      const valueOnceLoaded = fieldOnceLoaded?.value;
+
+      await typeName(emptiedName);
+
+      const fieldBeforeSave = nameInput();
+      const valueBeforeSave = fieldBeforeSave?.value;
+
+      await clickOn('.btn-save');
+
+      expect(valueOnceLoaded).toBe(EXISTING_KANBAN.name);
+      expect(valueBeforeSave).toBe('');
+      expect(kanbanService.renameKanban).toHaveBeenCalledTimes(1);
+      expect(kanbanService.renameKanban).toHaveBeenCalledWith(
+        EXISTING_KANBAN.id,
+        FALLBACK_SAVED_NAME,
+      );
+    });
+
+    it('T6.4 ramène à la liste après un renommage réussi', async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+
+      const navigationsBeforeSave = navigations();
+
+      await clickOn('.btn-save');
+
+      const navigationsAfterSave = navigations();
+
+      expect(navigationsBeforeSave).toEqual([]);
+      expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 7 — Échec de l'enregistrement
+  // ---------------------------------------------------------------------------
+  describe("Échec de l'enregistrement", () => {
+    it("T7.1 reste affiché après un échec d'enregistrement : aucune navigation vers la liste", async () => {
+      const writeFailure = new Error('Écriture refusée');
+      const typedName = 'Anniversaire de Léa';
+
+      await setup();
+      kanbanService.createKanban.mockRejectedValue(writeFailure);
+
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const requestedNavigations = navigations();
+      const editorStillShown = isShown('.kanban-editor');
+
+      expect(kanbanService.createKanban).toHaveBeenCalledTimes(1);
+      expect(requestedNavigations).toEqual([]);
+      expect(editorStillShown).toBe(true);
+    });
+
+    it("T7.2 garde le nom saisi dans le champ après un échec : la frappe n'est pas perdue", async () => {
+      const writeFailure = new Error('Écriture refusée');
+      const typedName = '  Anniversaire de Léa  ';
+      const expectedStoredName = 'Anniversaire de Léa';
+
+      await setup();
+      kanbanService.createKanban.mockRejectedValue(writeFailure);
+
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const fieldAfterFailure = nameInput();
+      const valueAfterFailure = fieldAfterFailure?.value;
+
+      expect(kanbanService.createKanban).toHaveBeenCalledWith(expectedStoredName);
+      expect(fieldAfterFailure).not.toBeNull();
+      expect(valueAfterFailure).toBe(typedName);
+    });
+
+    it("T7.3 affiche le bandeau « Impossible d'enregistrer le tableau. », annoncé comme une alerte", async () => {
+      const writeFailure = new Error('Écriture refusée');
+      const typedName = 'Anniversaire de Léa';
+
+      await setup();
+      kanbanService.createKanban.mockRejectedValue(writeFailure);
+
+      await render();
+      await typeName(typedName);
+
+      const bannerBeforeSave = isShown('.action-error');
+
+      await clickOn('.btn-save');
+
+      const bannerAfterSave = el.querySelector<HTMLElement>('.action-error');
+      const bannerText = normalizedTextOf('.action-error');
+      const bannerRole = bannerAfterSave?.getAttribute('role');
+
+      expect(bannerBeforeSave).toBe(false);
+      expect(bannerAfterSave).not.toBeNull();
+      expect(bannerText).toContain(SAVE_FAILED_MESSAGE);
+      expect(bannerRole).toBe('alert');
+    });
+
+    it("T7.4 efface le bandeau de l'essai précédent avant de retenter l'enregistrement", async () => {
+      const writeFailure = new Error('Écriture refusée');
+      const typedName = 'Anniversaire de Léa';
+
+      await setup();
+      kanbanService.createKanban
+        .mockRejectedValueOnce(writeFailure)
+        .mockResolvedValue(EXISTING_KANBAN);
+
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const bannerAfterFirstAttempt = isShown('.action-error');
+
+      await clickOn('.btn-save');
+
+      const bannerAfterSecondAttempt = isShown('.action-error');
+      const storedNames = kanbanService.createKanban.mock.calls.map((call: unknown[]) => call[0]);
+
+      expect(bannerAfterFirstAttempt).toBe(true);
+      expect(bannerAfterSecondAttempt).toBe(false);
+      expect(storedNames).toEqual([typedName, typedName]);
+    });
+
+    it("T7.5 ramène à la liste, bandeau disparu, quand on retouche le nom puis que l'enregistrement réussit", async () => {
+      const writeFailure = new Error('Écriture refusée');
+      const refusedName = 'Travaux du garage';
+      const correctedName = 'Travaux de la cave';
+      const renamedBoard: Kanban = { ...EXISTING_KANBAN, name: correctedName };
+
+      await setup({ id: EXISTING_KANBAN.id });
+      kanbanService.renameKanban.mockRejectedValueOnce(writeFailure).mockResolvedValue(renamedBoard);
+
+      await render();
+      await typeName(refusedName);
+      await clickOn('.btn-save');
+
+      const bannerAfterFailure = isShown('.action-error');
+      const navigationsAfterFailure = navigations();
+
+      await typeName(correctedName);
+      await clickOn('.btn-save');
+
+      const bannerAfterSuccess = isShown('.action-error');
+      const navigationsAfterSuccess = navigations();
+      const renameArguments = kanbanService.renameKanban.mock.calls;
+
+      expect(bannerAfterFailure).toBe(true);
+      expect(navigationsAfterFailure).toEqual([]);
+      expect(bannerAfterSuccess).toBe(false);
+      expect(navigationsAfterSuccess).toEqual([KANBAN_LIST_ROUTE]);
+      expect(renameArguments).toEqual([
+        [EXISTING_KANBAN.id, refusedName],
+        [EXISTING_KANBAN.id, correctedName],
+      ]);
+    });
+
+    it("T7.6 traite un tableau supprimé pendant l'édition comme n'importe quel échec d'enregistrement", async () => {
+      const boardGoneFailure = new Error('Kanban introuvable');
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      kanbanService.renameKanban.mockRejectedValue(boardGoneFailure);
+
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const editorStillShown = isShown('.kanban-editor');
+      const fieldAfterFailure = nameInput();
+      const valueAfterFailure = fieldAfterFailure?.value;
+      const bannerText = normalizedTextOf('.action-error');
+      const requestedNavigations = navigations();
+      const notFoundShown = isShown('.not-found');
+      const loadErrorShown = isShown('.error-state');
+
+      expect(editorStillShown).toBe(true);
+      expect(valueAfterFailure).toBe(typedName);
+      expect(bannerText).toContain(SAVE_FAILED_MESSAGE);
+      expect(bannerText).not.toContain('introuvable');
+      expect(requestedNavigations).toEqual([]);
+      expect(notFoundShown).toBe(false);
+      expect(loadErrorShown).toBe(false);
     });
   });
 });
