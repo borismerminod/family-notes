@@ -40,6 +40,13 @@ export class KanbanEditor implements OnInit {
   private readonly router = inject(Router);
 
   /**
+   * Name the board falls back on, exposed so the template can use it as the hint of the name field:
+   * D-E2 ties the two usages together — what is merely suggested while typing is what gets stored
+   * on save — so the string lives in one place only.
+   */
+  readonly defaultName = DEFAULT_NAME;
+
+  /**
    * Board name as the user typed it, two-way bound to the name field. It starts empty on a brand
    * new board, 'Sans titre' being a mere placeholder: the fallback on that name happens on save,
    * not while typing (D-E2).
@@ -53,8 +60,12 @@ export class KanbanEditor implements OnInit {
    */
   initialName = signal<string>('');
 
-  /** True in edit mode, false in create mode — drives the title of the navigation bar (D-E5). */
-  editing = signal<boolean>(false);
+  /**
+   * Whether the route carried an identifier, which is what tells edit mode from create mode (D-E8)
+   * and drives the title of the navigation bar (D-E5). **Derived** from {@link kanbanId} rather
+   * than stored beside it, so the two can never disagree.
+   */
+  editing = computed(() => this.kanbanId() !== null);
 
   /** True while the board is being read from the data source (edit mode only). */
   isLoading = signal<boolean>(false);
@@ -83,8 +94,12 @@ export class KanbanEditor implements OnInit {
    */
   hasPendingChanges = computed(() => this.name().trim() !== this.initialName().trim());
 
-  /** Identifier of the board being edited, or null in create mode (D-E8). */
-  private kanbanId: string | null = null;
+  /**
+   * Identifier of the board being edited, or `null` in create mode (D-E8). Read once from the route
+   * snapshot (D8), and the single source of truth for the mode the screen is in — {@link editing}
+   * and {@link writeKanban} both read it rather than keeping their own copy.
+   */
+  private readonly kanbanId = signal<string | null>(null);
 
   /**
    * Angular lifecycle hook; resolves edit vs create mode from the route, then reads the board to
@@ -93,11 +108,11 @@ export class KanbanEditor implements OnInit {
    * @returns A promise that resolves once the initial read has completed, if there was one.
    */
   async ngOnInit(): Promise<void> {
-    this.kanbanId = this.route.snapshot.paramMap.get('id');
-    this.editing.set(this.kanbanId !== null);
+    const idFromRoute = this.route.snapshot.paramMap.get('id');
+    this.kanbanId.set(idFromRoute);
 
-    if (this.kanbanId !== null) {
-      await this.loadKanban(this.kanbanId);
+    if (idFromRoute !== null) {
+      await this.loadKanban(idFromRoute);
     }
   }
 
@@ -110,6 +125,12 @@ export class KanbanEditor implements OnInit {
    * screen started from **before** the router is asked to leave, which is what makes "no pending
    * change any more" observable (D5). On failure the user stays here with their name, and the
    * change stays pending (D-E9).
+   *
+   * The **displayed** name is set to the stored one as well, and that is not redundant: a user who
+   * saved an empty field stored 'Sans titre' (D-E2), so leaving the field empty would leave it
+   * differing from the name the screen started from — a phantom pending change, and the back button
+   * would ask to confirm a loss that cannot happen. No test covers that path today (see C11 of
+   * REVUE_KANBAN_EDITION.md), so this line must not be dropped as a mere normalisation.
    * @returns A promise that resolves once the save attempt has completed (success or failure).
    */
   async onSave(): Promise<void> {
@@ -156,8 +177,9 @@ export class KanbanEditor implements OnInit {
    * is the only action offered by the error state besides going back to the list.
    */
   onRetry(): void {
-    if (this.kanbanId !== null) {
-      void this.loadKanban(this.kanbanId);
+    const idToReload = this.kanbanId();
+    if (idToReload !== null) {
+      void this.loadKanban(idToReload);
     }
   }
 
@@ -206,10 +228,11 @@ export class KanbanEditor implements OnInit {
    * @returns A promise resolving to the board as the data source stored it.
    */
   private writeKanban(nameToSave: string): Promise<Kanban> {
-    if (this.kanbanId === null) {
+    const idToRename = this.kanbanId();
+    if (idToRename === null) {
       return this.kanbanService.createKanban(nameToSave);
     }
-    return this.kanbanService.renameKanban(this.kanbanId, nameToSave);
+    return this.kanbanService.renameKanban(idToRename, nameToSave);
   }
 
   /**

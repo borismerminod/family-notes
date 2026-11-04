@@ -272,8 +272,14 @@ listes et les cartes.
 ## 4. Impacts et points d'attention
 
 - **Fichiers existants touchés** : `app.routes.ts` (deux routes + commentaire `C12`) et
-  `core/services/kanban-service.ts` (une méthode ajoutée). Aucune modification de `KanbanList`, de
-  `ConfirmDialog`, du modèle `Kanban`, ni du schéma de la base.
+  `core/services/kanban-service.ts` (une méthode ajoutée). Aucune modification de `ConfirmDialog`,
+  du modèle `Kanban`, ni du schéma de la base.
+- **Dérive assumée sur `KanbanList`** *(constatée à la revue, notée le 2026-11-04)* : cette section
+  annonçait « aucune modification de `KanbanList` ». Le lot y a finalement migré les icônes de
+  `material-icons` vers les **masques SVG** locaux (`kanban-list.html`, `kanban-list.css`), parce
+  que la police Material n'est **chargée nulle part** dans l'application (`src/index.html` ne la
+  référence pas) : ces `<span>` ne dessinaient rien. Les tests de `kanban-list` sont restés verts.
+  Voir le constat `C8` de [`REVUE_KANBAN_EDITION.md`](REVUE_KANBAN_EDITION.md).
 - **Pas de migration SQLite**, donc pas de `npm run build` + `npx cap sync` imposés par un
   changement de schéma — seulement le build habituel pour voir l'écran sur le téléphone.
 - **Démonstrabilité du lot `CRUD`** : avec ces deux routes, « + » et le clic sur une carte cessent

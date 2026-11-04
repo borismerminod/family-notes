@@ -299,9 +299,12 @@ Elles sont **à confirmer** avant `ecrire_tests`.
   « Annuler » comme libellé d'annulation.
 - **D3 — Erreur de chargement : deux boutons** *(tranché le 2026-10-10)* : « **Réessayer** », qui
   relance la lecture du tableau, **et** « **Revenir à la liste** », qui ramène à `/kanban`. Par
-  symétrie avec l'état d'erreur de la liste des tableaux (T7.3 du lot `CRUD`). **L'écran 6 de la
-  maquette est à mettre à jour** : il ne porte aujourd'hui qu'un seul bouton et la question « à
-  trancher » qui vient d'être tranchée ici.
+  symétrie avec l'état d'erreur de la liste des tableaux (T7.3 du lot `CRUD`). ~~L'écran 6 de la
+  maquette est à mettre à jour~~ — **consigne abandonnée le 2026-11-04** : la maquette a rempli son
+  office en fixant le contrat DOM avant ce plan, et n'est **plus tenue à jour**. Elle reste donc en
+  retard sur l'écran livré (un seul bouton sur l'écran 6, aucun écran « introuvable », icônes
+  `material-icons`) : la référence du contrat DOM est désormais le **§7 de ce plan** et le code.
+  Voir `C2` / `R2` (retirés) de [`REVUE_KANBAN_EDITION.md`](REVUE_KANBAN_EDITION.md).
 - **D4 — « Réessayer » relance la seule lecture** *(à confirmer)* : même chemin que le chargement
   initial (`getKanbanById` sur l'identifiant de la route), sans rechargement de l'écran ni de la
   page. Un `null` au second essai se comporte comme au premier : le bloc « Tableau introuvable. » (`D-E4`).

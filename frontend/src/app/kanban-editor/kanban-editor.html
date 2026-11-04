@@ -68,7 +68,7 @@
         class="editor-name"
         [value]="name()"
         (input)="name.set($any($event.target).value)"
-        placeholder="Sans titre"
+        [placeholder]="defaultName"
       />
     </div>
 

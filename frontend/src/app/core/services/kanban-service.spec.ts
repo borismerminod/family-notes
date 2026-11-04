@@ -8,6 +8,7 @@ import { Kanban } from '../models';
 /** Contrat CIBLE du service (TDD) — `.agent/KANBAN/CRUD/PLAN_TESTS_KANBAN_CRUD.md`, partie A. */
 interface KanbanServiceContract {
   getAllKanbans(): Promise<Kanban[]>;
+  getKanbanById(id: string): Promise<Kanban | null>;
   createKanban(name: string): Promise<Kanban>;
   renameKanban(id: string, name: string): Promise<Kanban>;
   deleteKanban(id: string): Promise<void>;
@@ -90,6 +91,61 @@ describe('KanbanService (accès SQLite)', () => {
       const kanbans = await service.getAllKanbans();
 
       expect(kanbans).toEqual([]);
+    });
+  });
+
+  /**
+   * Single board read, part A of `.agent/KANBAN/EDITION/PLAN_TESTS_KANBAN_EDITION.md` (groupe 1).
+   *
+   * Beware the numbering: its `T1.x` are NOT the `T1.x` of the CRUD plan, whose groupe 1 covers the
+   * table preparation and whose `T1.3` lives in the 'base non préparée' block below. The describe
+   * path is what tells the two apart in the test output.
+   */
+  describe('getKanbanById (plan EDITION, partie A)', () => {
+    it('T1.1 renvoie le tableau portant l\'identifiant demandé, converti au modèle', async () => {
+      const row = dbRow({
+        id: 'k-asked',
+        name: 'Travaux maison',
+        created_at: '2026-08-15 09:00:00',
+        updated_at: '2026-09-25 11:00:00',
+      });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+
+      const kanban = await service.getKanbanById('k-asked');
+      const expected: Kanban = {
+        id: 'k-asked',
+        name: 'Travaux maison',
+        updatedAt: '2026-09-25 11:00:00',
+      };
+      const exposesCreationDate =
+        kanban !== null && ('created_at' in kanban || 'createdAt' in kanban);
+
+      expect(kanban).toEqual(expected);
+      expect(exposesCreationDate).toBe(false);
+    });
+
+    it('T1.2 renvoie null quand aucun tableau ne porte cet identifiant, sans lever d\'erreur', async () => {
+      mocks.dbConnection.query.mockResolvedValue({ values: [] });
+
+      const read = service.getKanbanById('k-absent');
+
+      await expect(read).resolves.toBeNull();
+    });
+
+    it('T1.3 relance vers l\'appelant l\'erreur de la base comme celle d\'une préparation impossible', async () => {
+      mocks.dbConnection.query.mockRejectedValue(new Error('Base indisponible'));
+      const readOnFailingDatabase = service.getKanbanById('k-asked');
+
+      mocks.database.connect.mockRejectedValue(new Error('préparation impossible'));
+      TestBed.resetTestingModule();
+      TestBed.configureTestingModule({
+        providers: [{ provide: DatabaseService, useValue: mocks.database }],
+      });
+      const unpreparedService = TestBed.inject(KanbanService) as unknown as KanbanServiceContract;
+      const readOnUnpreparedDatabase = unpreparedService.getKanbanById('k-asked');
+
+      await expect(readOnFailingDatabase).rejects.toThrow();
+      await expect(readOnUnpreparedDatabase).rejects.toThrow();
     });
   });
 
