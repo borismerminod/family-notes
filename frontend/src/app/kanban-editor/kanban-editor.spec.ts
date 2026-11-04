@@ -66,6 +66,15 @@ const LOAD_FAILED_MESSAGE = 'Impossible de charger ce tableau.';
  */
 const SAVE_FAILED_MESSAGE = "Impossible d'enregistrer le tableau.";
 
+/** Warning of the popup shown when leaving would lose the typed name (`D2`). */
+const DISCARD_CHANGES_MESSAGE = 'Vos modifications ne seront pas enregistrées. Quitter ce tableau ?';
+
+/** Label of the popup button that leaves the screen anyway (`D2`). */
+const DISCARD_CONFIRM_LABEL = 'Quitter';
+
+/** Label of the popup button that keeps the user on the screen (`D2`). */
+const DISCARD_CANCEL_LABEL = 'Annuler';
+
 describe("KanbanEditor (écran d'édition d'un tableau)", () => {
   let fixture: ComponentFixture<KanbanEditor>;
   let el: HTMLElement;
@@ -178,6 +187,17 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
   }
 
   /**
+   * Presses the Escape key the way the user would, on the document itself: the confirmation popup
+   * listens for it through a host listener, not through any element of this screen.
+   */
+  async function pressEscape(): Promise<void> {
+    const escapeKeyDown = new KeyboardEvent('keydown', { key: 'Escape' });
+    document.dispatchEvent(escapeKeyDown);
+    await fixture.whenStable();
+    fixture.detectChanges();
+  }
+
+  /**
    * Types a board name the way the user would, through the name field, then lets the screen
    * update. Going through the field rather than the component signal keeps the test black-box:
    * the binding is part of what is being checked.
@@ -193,6 +213,19 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     field.dispatchEvent(new Event('input'));
     await fixture.whenStable();
     fixture.detectChanges();
+  }
+
+  /**
+   * Gives the children of the board content area that are not the placeholders announcing the
+   * lists to come. The lists and the cards do not exist yet, so emptiness is checked by what the
+   * area really holds rather than by selectors this batch would have to invent — and the check
+   * starts to bite as soon as the next batch plugs a first real child in.
+   * @returns The unexpected children, empty as long as the area holds its placeholders only.
+   */
+  function boardCanvasChildrenBesidesPlaceholders(): Element[] {
+    const canvas = el.querySelector<HTMLElement>('.board-canvas');
+    const canvasChildren = canvas === null ? [] : Array.from(canvas.children);
+    return canvasChildren.filter((child) => !child.classList.contains('ghost-column'));
   }
 
   /**
@@ -807,6 +840,345 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       expect(requestedNavigations).toEqual([]);
       expect(notFoundShown).toBe(false);
       expect(loadErrorShown).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 8 — Retour sans modification en attente
+  // ---------------------------------------------------------------------------
+  describe('Retour sans modification en attente', () => {
+    it("T8.1 ramène immédiatement à la liste en mode création quand le champ est resté vide, sans aucune popup", async () => {
+      await setup();
+      await render();
+
+      const navigationsBeforeBack = navigations();
+
+      await clickOn('.btn-back');
+
+      const navigationsAfterBack = navigations();
+      const confirmPopupShown = isShown('.confirm-backdrop');
+
+      expect(navigationsBeforeBack).toEqual([]);
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
+      expect(confirmPopupShown).toBe(false);
+    });
+
+    it('T8.2 ramène immédiatement à la liste en mode édition quand le nom est inchangé, sans popup', async () => {
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+
+      const fieldBeforeBack = nameInput();
+      const valueBeforeBack = fieldBeforeBack?.value;
+      const navigationsBeforeBack = navigations();
+
+      await clickOn('.btn-back');
+
+      const navigationsAfterBack = navigations();
+      const confirmPopupShown = isShown('.confirm-backdrop');
+
+      expect(valueBeforeBack).toBe(EXISTING_KANBAN.name);
+      expect(navigationsBeforeBack).toEqual([]);
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
+      expect(confirmPopupShown).toBe(false);
+    });
+
+    it('T8.3 ne compte pas comme une modification le fait de retaper exactement le nom de départ', async () => {
+      const intermediateName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(intermediateName);
+      await typeName(EXISTING_KANBAN.name);
+
+      const navigationsBeforeBack = navigations();
+
+      await clickOn('.btn-back');
+
+      const navigationsAfterBack = navigations();
+      const confirmPopupShown = isShown('.confirm-backdrop');
+
+      expect(navigationsBeforeBack).toEqual([]);
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
+      expect(confirmPopupShown).toBe(false);
+    });
+
+    it("T8.4 ne compte pas comme une modification l'ajout de seuls espaces en début ou en fin du nom", async () => {
+      const paddedName = `  ${EXISTING_KANBAN.name}  `;
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(paddedName);
+
+      const fieldBeforeBack = nameInput();
+      const valueBeforeBack = fieldBeforeBack?.value;
+      const navigationsBeforeBack = navigations();
+
+      await clickOn('.btn-back');
+
+      const navigationsAfterBack = navigations();
+      const confirmPopupShown = isShown('.confirm-backdrop');
+
+      expect(valueBeforeBack).toBe(paddedName);
+      expect(navigationsBeforeBack).toEqual([]);
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
+      expect(confirmPopupShown).toBe(false);
+    });
+
+    it("T8.5 n'écrit rien quand le retour est immédiat : ni création ni renommage demandés", async () => {
+      const intermediateName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(intermediateName);
+      await typeName(EXISTING_KANBAN.name);
+      await clickOn('.btn-back');
+
+      const writesOnBack = writeCalls();
+      const navigationsAfterBack = navigations();
+
+      expect(writesOnBack).toBe(0);
+      expect(kanbanService.createKanban).not.toHaveBeenCalled();
+      expect(kanbanService.renameKanban).not.toHaveBeenCalled();
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 9 — Retour avec modification en attente
+  // ---------------------------------------------------------------------------
+  describe('Retour avec modification en attente', () => {
+    it("T9.1 ouvre la popup d'abandon quand le nom a été modifié, sans naviguer ni écrire tant que l'utilisateur n'a pas répondu", async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmLabel = normalizedTextOf('.confirm-card .btn-confirm');
+      const cancelLabel = normalizedTextOf('.confirm-card .btn-cancel');
+      const requestedNavigations = navigations();
+      const writesWhileWaiting = writeCalls();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(confirmMessage).toBe(DISCARD_CHANGES_MESSAGE);
+      expect(confirmLabel).toBe(DISCARD_CONFIRM_LABEL);
+      expect(cancelLabel).toBe(DISCARD_CANCEL_LABEL);
+      expect(requestedNavigations).toEqual([]);
+      expect(writesWhileWaiting).toBe(0);
+    });
+
+    it("T9.2 ferme la popup et laisse l'utilisateur sur l'écran quand il touche « Annuler », sa saisie intacte", async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-back');
+
+      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+
+      await clickOn('.confirm-card .btn-cancel');
+
+      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const editorStillShown = isShown('.kanban-editor');
+      const fieldAfterAnswer = nameInput();
+      const valueAfterAnswer = fieldAfterAnswer?.value;
+      const requestedNavigations = navigations();
+      const writesOnCancel = writeCalls();
+
+      expect(confirmPopupBeforeAnswer).toBe(true);
+      expect(confirmPopupAfterAnswer).toBe(false);
+      expect(editorStillShown).toBe(true);
+      expect(valueAfterAnswer).toBe(typedName);
+      expect(requestedNavigations).toEqual([]);
+      expect(writesOnCancel).toBe(0);
+    });
+
+    it("T9.3 traite un clic hors de la popup comme « Annuler »", async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-back');
+
+      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+
+      await clickOn('.confirm-backdrop');
+
+      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const editorStillShown = isShown('.kanban-editor');
+      const fieldAfterAnswer = nameInput();
+      const valueAfterAnswer = fieldAfterAnswer?.value;
+      const requestedNavigations = navigations();
+      const writesOnBackdropClick = writeCalls();
+
+      expect(confirmPopupBeforeAnswer).toBe(true);
+      expect(confirmPopupAfterAnswer).toBe(false);
+      expect(editorStillShown).toBe(true);
+      expect(valueAfterAnswer).toBe(typedName);
+      expect(requestedNavigations).toEqual([]);
+      expect(writesOnBackdropClick).toBe(0);
+    });
+
+    it('T9.4 traite la touche Échap comme « Annuler »', async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-back');
+
+      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+
+      await pressEscape();
+
+      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const editorStillShown = isShown('.kanban-editor');
+      const fieldAfterAnswer = nameInput();
+      const valueAfterAnswer = fieldAfterAnswer?.value;
+      const requestedNavigations = navigations();
+      const writesOnEscape = writeCalls();
+
+      expect(confirmPopupBeforeAnswer).toBe(true);
+      expect(confirmPopupAfterAnswer).toBe(false);
+      expect(editorStillShown).toBe(true);
+      expect(valueAfterAnswer).toBe(typedName);
+      expect(requestedNavigations).toEqual([]);
+      expect(writesOnEscape).toBe(0);
+    });
+
+    it("T9.5 ramène à la liste sans rien enregistrer quand l'utilisateur touche « Quitter »", async () => {
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-back');
+
+      const navigationsBeforeAnswer = navigations();
+
+      await clickOn('.confirm-card .btn-confirm');
+
+      const navigationsAfterAnswer = navigations();
+      const writesOnDiscard = writeCalls();
+
+      expect(navigationsBeforeAnswer).toEqual([]);
+      expect(navigationsAfterAnswer).toEqual([KANBAN_LIST_ROUTE]);
+      expect(writesOnDiscard).toBe(0);
+      expect(kanbanService.createKanban).not.toHaveBeenCalled();
+      expect(kanbanService.renameKanban).not.toHaveBeenCalled();
+    });
+
+    it('T9.6 ne pose plus de question au retour après un enregistrement réussi', async () => {
+      const typedName = 'Travaux du garage';
+      const renamedBoard: Kanban = { ...EXISTING_KANBAN, name: typedName };
+
+      await setup({ id: EXISTING_KANBAN.id });
+      kanbanService.renameKanban.mockResolvedValue(renamedBoard);
+
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const navigationsAfterSave = navigations();
+
+      await clickOn('.btn-back');
+
+      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const navigationsAfterBack = navigations();
+
+      expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
+      expect(confirmPopupAfterBack).toBe(false);
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE, KANBAN_LIST_ROUTE]);
+    });
+
+    it("T9.7 demande toujours confirmation au retour après un échec d'enregistrement", async () => {
+      const writeFailure = new Error('Écriture refusée');
+      const typedName = 'Travaux du garage';
+
+      await setup({ id: EXISTING_KANBAN.id });
+      kanbanService.renameKanban.mockRejectedValue(writeFailure);
+
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const bannerAfterFailure = isShown('.action-error');
+      const navigationsAfterFailure = navigations();
+
+      await clickOn('.btn-back');
+
+      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const navigationsAfterBack = navigations();
+
+      expect(bannerAfterFailure).toBe(true);
+      expect(navigationsAfterFailure).toEqual([]);
+      expect(confirmPopupAfterBack).toBe(true);
+      expect(navigationsAfterBack).toEqual([]);
+    });
+
+    it("T9.8 ouvre la popup d'abandon en mode création dès qu'un nom a été tapé, le nom de départ étant vide", async () => {
+      const typedName = 'Anniversaire de Léa';
+
+      await setup();
+      await render();
+      await typeName(typedName);
+      await clickOn('.btn-back');
+
+      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-message');
+      const requestedNavigations = navigations();
+      const writesWhileWaiting = writeCalls();
+
+      expect(confirmPopupAfterBack).toBe(true);
+      expect(confirmMessage).toBe(DISCARD_CHANGES_MESSAGE);
+      expect(requestedNavigations).toEqual([]);
+      expect(writesWhileWaiting).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 10 — Zone de contenu du tableau
+  // ---------------------------------------------------------------------------
+  describe('Zone de contenu du tableau', () => {
+    it('T10.1 affiche en mode création une zone de contenu présente et vide, annonçant les listes à venir', async () => {
+      await setup();
+      await render();
+
+      const canvasShown = isShown('.board-canvas');
+      const placeholderShown = isShown('.board-canvas .ghost-column');
+      const placeholderText = normalizedTextOf('.board-canvas .ghost-column');
+      const unexpectedChildren = boardCanvasChildrenBesidesPlaceholders();
+      const writesOnOpening = writeCalls();
+
+      expect(canvasShown).toBe(true);
+      expect(placeholderShown).toBe(true);
+      expect(placeholderText.length).toBeGreaterThan(0);
+      expect(unexpectedChildren).toEqual([]);
+      expect(kanbanService.getKanbanById).not.toHaveBeenCalled();
+      expect(writesOnOpening).toBe(0);
+    });
+
+    it("T10.2 affiche la même zone de contenu vide en mode édition, sans appel supplémentaire à la source", async () => {
+      await setup({ id: EXISTING_KANBAN.id });
+      await render();
+
+      const canvasShown = isShown('.board-canvas');
+      const placeholderShown = isShown('.board-canvas .ghost-column');
+      const placeholderText = normalizedTextOf('.board-canvas .ghost-column');
+      const unexpectedChildren = boardCanvasChildrenBesidesPlaceholders();
+      const writesOnOpening = writeCalls();
+
+      expect(canvasShown).toBe(true);
+      expect(placeholderShown).toBe(true);
+      expect(placeholderText.length).toBeGreaterThan(0);
+      expect(unexpectedChildren).toEqual([]);
+      expect(kanbanService.getKanbanById).toHaveBeenCalledTimes(1);
+      expect(writesOnOpening).toBe(0);
     });
   });
 });
