@@ -43,7 +43,7 @@ l'interface reste en « liste » ; seuls les identifiants du code et le nom de l
 | D-L11 | Origine des identifiants | **Générés par l'écran** à l'ajout (`crypto.randomUUID()`), pas par le service à l'insertion — écart assumé avec `createKanban`. L'écran doit pouvoir désigner la colonne à renommer, retirer ou déplacer **avant** qu'elle existe en base, et `D-L10` exige des `id` stables. |
 | D-L12 | Représentation de l'ordre | Lecture **triée par `position`** ; après chaque ajout, retrait ou déplacement, l'écran réordonne son tableau **puis renumérote** `position` depuis l'index (base 0) ; l'écriture envoie `column.position` tel quel. Le modèle n'est donc jamais porteur d'une position fausse, et le service n'a pas à redériver l'ordre. |
 | D-L13 | Atomicité | **Pas de transaction** (il n'y en a aucune dans le dépôt) : le tableau d'abord, les colonnes ensuite. Deux obligations qui en découlent — (1) l'écran **bascule en mode édition dès que le tableau est créé**, avant même de tenter les colonnes, sinon un second appui sur « Enregistrer » créerait un **deuxième tableau** ; (2) l'enregistrement est **rejouable**, ce que `D-L10` garantit par construction : rejouer l'état affiché converge vers le bon résultat quel que soit l'état intermédiaire laissé par un échec. *(Tranché le 2026-11-05.)* |
-| D-L14 | Intégrité référentielle | **`PRAGMA foreign_keys = ON`** à l'ouverture de la connexion, cascade déclarée sur `kanban_columns.kanban_id`. Sans le pragma, SQLite ignore purement et simplement la cascade et la suppression d'un tableau laisserait ses colonnes orphelines. Effet de bord **voulu** : `notes.category_id ON DELETE SET NULL` devient active elle aussi (voir §4). |
+| D-L14 | Intégrité référentielle | **`PRAGMA foreign_keys = ON`** à l'ouverture de la connexion, cascade déclarée sur `kanban_columns.kanban_id`. Sans le pragma, SQLite ignore purement et simplement la cascade et la suppression d'un tableau laisserait ses colonnes orphelines. Effet de bord **voulu** : `notes.category_id ON DELETE SET NULL` devient active elle aussi (voir §4). **Mécanique, vérifiée dans le plugin** *(précisé le 2026-11-07)* : `SQLiteDBConnection.execute(statements, transaction = true)` enrobe par défaut ce qu'il exécute dans une transaction, où SQLite ignore le pragma en silence. Le pragma est donc posé par `db.execute('PRAGMA foreign_keys = ON', false)` — **second argument explicite**. C'est la seule façon qu'il prenne effet. |
 | D-L15 | Migration de schéma | **`migrate()` perd son court-circuit** sur la présence de `categories` et devient une suite d'étapes indépendantes, chacune gardée par son `isTable` : notes/catégories relationnelles (**inchangé**), puis `schema_kanban.sql` si `kanbans` manque (**ferme `E1`**), puis `schema_kanban_columns.sql` si `kanban_columns` manque. Le **seed binaire** `family_notesSQLite.db` n'est **pas** modifié : l'étape 3 crée la table partout, installation neuve comprise. |
 | D-L16 | H-L6 — sort de l'écran après enregistrement | **Retour à la liste maintenu** (`D-E1` inchangé) : ce lot ne change pas deux choses à la fois. **Question laissée ouverte** dans la SPEC — composer des colonnes puis être éjecté du tableau à chaque enregistrement pourrait justifier de rester sur l'écran, ce qui deviendra franchement pénible au lot « cartes ». |
 | D-L17 | H-L7 — nom par défaut d'une colonne | **« Sans titre »**, même repli et même constante d'esprit que pour le nom d'un tableau (`D-E2`) : le repli se fait **à la validation de la saisie**, pas pendant la frappe. Le refus d'un nom vide par le service reste un **filet** (`D-E10`). |
@@ -525,14 +525,27 @@ bug :** après un tel échec, le titre de la barre de navigation passe de « Nou
   enregistrement **rejouable*** —, la réserve d'un état intermédiaire possible en base, et deux
   critères neufs : la **rejouabilité** (`US6`) et « un ré-essai ne crée jamais un second tableau »
   (`US7`, c'est le piège de `D-L13`). L'hypothèse `H-L12` trace la décision.
-- **Le pragma et la migration relationnelle se croisent.**
-  `migration_relational_categories.sql` pose lui-même `PRAGMA foreign_keys = OFF` en tête et
-  `= ON` en pied, parce qu'il recrée la table `notes` par bascule (`DROP` + `RENAME`). Les deux
-  mécanismes sont compatibles — le script reprend la main pendant sa durée, et son `ON` final
-  rejoint désormais la valeur par défaut de la connexion — mais **l'ordre importe** : le pragma de
-  la connexion est posé **avant** `migrate()`, et jamais à l'intérieur d'une transaction, sans quoi
-  SQLite l'ignore en silence. À vérifier sur un appareil réel plutôt que sur la seule foi des
-  tests, où la connexion est bouchonnée.
+- **Le pragma et la migration relationnelle se croisent** — *corrigé le 2026-11-07, la version
+  précédente de ce point était fausse*. `migration_relational_categories.sql` pose lui-même
+  `PRAGMA foreign_keys = OFF` en tête et `= ON` en pied, parce qu'il recrée la table `notes` par
+  bascule (`DROP` + `RENAME`). On écrivait ici que « le script reprend la main pendant sa durée » :
+  **il ne la reprend pas**. `runScript` passe par `db.execute()`, qui enrobe le script dans une
+  transaction (`transaction = true` par défaut), et SQLite ignore en silence un `PRAGMA
+  foreign_keys` posé dans une transaction. Les deux pragmas du fichier sont donc **sans effet
+  quand l'application joue le script** ; ils ne valent que pour une exécution à la main dans
+  `sqlite3`. Conséquence réelle : la migration relationnelle s'exécute **clés étrangères
+  actives**. Ce n'est pas bloquant et c'est **vérifié** sur un moteur SQLite réel (voir ci-dessous)
+  — rien ne référence `notes`, donc le `DROP` passe, et l'`INSERT INTO notes_migrated` ne pose que
+  des `category_id` issus d'un `LEFT JOIN` sur `categories`, donc existants ou `NULL`. À conserver
+  tel quel, mais à ne plus décrire comme une reprise de main.
+- **Vérification du socle sur un moteur SQLite réel** *(ajouté le 2026-11-07)* : les scripts du lot
+  ont été joués sur `sql.js` (le moteur de `jeep-sqlite`, déjà présent dans `node_modules`), ce qui
+  couvre sans appareil ce que les tests bouchonnés ne voient pas — création et rejouabilité des
+  trois scripts, `CHECK` sur le nom et la position, refus d'un `kanban_id` inconnu ou nul, upsert
+  `ON CONFLICT(id)` qui **met à jour** au lieu de recréer (`D-L10`), cascade effective à la
+  suppression d'un tableau, `notes.category_id` remis à `NULL` à la suppression d'une catégorie, et
+  migration relationnelle complète clés étrangères actives. Reste à voir **sur l'appareil** ce que
+  ce moteur ne peut pas dire : que le pragma survit bien à la connexion ouverte par le plugin natif.
 - **Un trou existant que `D-L14` ferme au passage** : `categories.service.ts:109` supprime une
   catégorie sans toucher aux notes. Clés étrangères inactives, les notes gardent aujourd'hui un
   `category_id` pointant vers une catégorie disparue. Le pragma activé rend
@@ -565,7 +578,13 @@ bug :** après un tel échec, le titre de la barre de navigation passe de « Nou
 - **Anti-régression** : les 17 cas de `kanban-service.spec.ts` doivent rester verts —
   `getKanbanById` **change de contrat** (il renvoie désormais `columns`), donc ses cas existants
   seront à compléter, pas à réécrire. Les cas de `schema-migration.service.spec.ts` portent sur le
-  court-circuit supprimé : ils sont à **reprendre** en même temps que `migrate()`. Les cas de
+  court-circuit supprimé : ils sont à **reprendre** en même temps que `migrate()` — *fait le
+  2026-11-07* : le cas « ne touche à rien quand la table `categories` existe déjà » devient « ne
+  touche à rien quand les **trois étapes** sont déjà en place », les cas existants attendent
+  désormais les scripts kanban à la suite du leur, et trois cas neufs couvrent les gardes par
+  étape (base installée avant le lot kanban, installation neuve issue du seed, étape déjà en
+  place). `database.service.spec.ts` reçoit de même le pragma dans sa doublure de connexion et un
+  cas qui vérifie qu'il est posé **hors transaction et avant** `migrate()`. Les cas de
   `kanban-list` et de `notes-service` ne doivent pas bouger.
 - **Accessibilité** : chaque colonne porte un nom accessible qui **la désigne** (les boutons
   « ← », « → » et « retirer » se répètent autant de fois qu'il y a de colonnes — sans libellé

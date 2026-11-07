@@ -4,27 +4,37 @@ import { SQLiteDBConnection } from '@capacitor-community/sqlite';
 
 import { SchemaMigrationService } from './schema-migration.service';
 
-/** Colonnes renvoyées par `PRAGMA table_info('notes')` pour un schéma donné. */
+/** Columns returned by `PRAGMA table_info('notes')` for a given schema. */
 function columns(...names: string[]): { values: { name: string }[] } {
   return { values: names.map((name) => ({ name })) };
 }
 
-/** Ancien schéma : la catégorie est un simple texte sur la note. */
+/** Legacy schema: the category is plain text carried by the note. */
 const LEGACY_NOTES_COLUMNS = columns('id', 'title', 'content', 'category', 'updated_at');
-/** Schéma courant : la note référence `categories(id)`. */
+/** Current schema: the note references `categories(id)`. */
 const MIGRATED_NOTES_COLUMNS = columns('id', 'title', 'content', 'category_id', 'updated_at');
+
+/** Tables a fully up-to-date database holds (one per migration step). */
+const EVERY_TABLE = ['categories', 'kanbans', 'kanban_columns'];
+/** What a fresh install gets from the binary seed, which carries no `kanban_columns` (D-L15). */
+const SEEDED_TABLES = ['categories', 'kanbans'];
 
 describe('SchemaMigrationService', () => {
   let service: SchemaMigrationService;
   let db: { isTable: ReturnType<typeof vi.fn>; query: ReturnType<typeof vi.fn>; execute: ReturnType<typeof vi.fn> };
   let fetchMock: ReturnType<typeof vi.fn>;
 
-  /** Connexion doublée, passée à `migrate`. */
+  /** Doubled connection, passed to `migrate`. */
   function connection(): SQLiteDBConnection {
     return db as unknown as SQLiteDBConnection;
   }
 
-  /** Noms des scripts chargés depuis les assets, dans l'ordre. */
+  /** Declares which tables the database already holds; every other one is reported missing. */
+  function tablesInPlace(...names: string[]): void {
+    db.isTable.mockImplementation(async (table: string) => ({ result: names.includes(table) }));
+  }
+
+  /** Names of the scripts loaded from the assets, in order. */
   function loadedScripts(): string[] {
     return fetchMock.mock.calls.map((call) => String(call[0]).split('/').pop() as string);
   }
@@ -36,8 +46,8 @@ describe('SchemaMigrationService', () => {
       execute: vi.fn().mockResolvedValue({ changes: { changes: 1 } }),
     };
 
-    // Les scripts SQL vivent dans les assets (frontend/public/assets/migrations) : on double
-    // leur chargement, le contenu exact étant celui des fichiers livrés.
+    // The SQL scripts live in the assets (frontend/public/assets/migrations): their loading is
+    // doubled here, the exact content being the one of the shipped files.
     fetchMock = vi.fn().mockResolvedValue({ ok: true, text: async () => '-- sql' });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -53,8 +63,8 @@ describe('SchemaMigrationService', () => {
     expect(service).toBeTruthy();
   });
 
-  it('ne touche à rien quand la table `categories` existe déjà', async () => {
-    db.isTable.mockResolvedValue({ result: true });
+  it('ne touche à rien quand les trois étapes sont déjà en place', async () => {
+    tablesInPlace(...EVERY_TABLE);
 
     await expect(service.migrate(connection())).resolves.toBe(false);
 
@@ -63,21 +73,28 @@ describe('SchemaMigrationService', () => {
     expect(db.query).not.toHaveBeenCalled();
   });
 
-  it('joue la migration relationnelle sur une base restée à l’ancien format', async () => {
+  it('joue la migration relationnelle puis les tables kanban sur une base restée à l’ancien format', async () => {
     db.query.mockResolvedValue(LEGACY_NOTES_COLUMNS);
 
     await expect(service.migrate(connection())).resolves.toBe(true);
 
-    expect(loadedScripts()).toEqual(['migration_relational_categories.sql']);
-    expect(db.execute).toHaveBeenCalledWith('-- sql');
+    expect(loadedScripts()).toEqual([
+      'migration_relational_categories.sql',
+      'schema_kanban.sql',
+      'schema_kanban_columns.sql',
+    ]);
   });
 
-  it('crée le schéma courant quand la base est vide', async () => {
+  it('crée le schéma courant et les tables kanban quand la base est vide', async () => {
     db.query.mockResolvedValue({ values: [] });
 
     await expect(service.migrate(connection())).resolves.toBe(true);
 
-    expect(loadedScripts()).toEqual(['schema_notes.sql']);
+    expect(loadedScripts()).toEqual([
+      'schema_notes.sql',
+      'schema_kanban.sql',
+      'schema_kanban_columns.sql',
+    ]);
   });
 
   it('crée les catégories seules quand les notes sont déjà relationnelles', async () => {
@@ -85,9 +102,11 @@ describe('SchemaMigrationService', () => {
 
     await expect(service.migrate(connection())).resolves.toBe(true);
 
-    expect(loadedScripts()).toEqual(['schema_categories.sql']);
-    // La colonne existe déjà : pas d'ALTER TABLE.
-    expect(db.execute).toHaveBeenCalledTimes(1);
+    expect(loadedScripts()).toEqual([
+      'schema_categories.sql',
+      'schema_kanban.sql',
+      'schema_kanban_columns.sql',
+    ]);
   });
 
   it('ajoute `category_id` aux notes qui n’ont ni l’ancienne ni la nouvelle colonne', async () => {
@@ -95,9 +114,34 @@ describe('SchemaMigrationService', () => {
 
     await expect(service.migrate(connection())).resolves.toBe(true);
 
-    expect(loadedScripts()).toEqual(['schema_categories.sql']);
     const statements = db.execute.mock.calls.map((call) => String(call[0]));
-    expect(statements.some((sql) => sql.includes('ADD COLUMN category_id'))).toBe(true);
+    const addsTheColumn = statements.some((sql) => sql.includes('ADD COLUMN category_id'));
+    expect(addsTheColumn).toBe(true);
+  });
+
+  it('crée la table des tableaux sur une base installée avant le lot kanban', async () => {
+    tablesInPlace('categories');
+
+    await expect(service.migrate(connection())).resolves.toBe(true);
+
+    expect(loadedScripts()).toEqual(['schema_kanban.sql', 'schema_kanban_columns.sql']);
+  });
+
+  it('crée la seule table des colonnes sur une installation neuve issue du seed', async () => {
+    tablesInPlace(...SEEDED_TABLES);
+
+    await expect(service.migrate(connection())).resolves.toBe(true);
+
+    expect(loadedScripts()).toEqual(['schema_kanban_columns.sql']);
+  });
+
+  it('ne rejoue pas une étape dont la table existe déjà', async () => {
+    tablesInPlace('kanbans', 'kanban_columns');
+    db.query.mockResolvedValue(LEGACY_NOTES_COLUMNS);
+
+    await expect(service.migrate(connection())).resolves.toBe(true);
+
+    expect(loadedScripts()).toEqual(['migration_relational_categories.sql']);
   });
 
   it('remonte une erreur explicite quand un script est introuvable', async () => {

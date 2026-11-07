@@ -57,7 +57,8 @@ export class DatabaseService {
   /**
    * Opens the database once for the whole application: on the web the store is bootstrapped first,
    * the seed database is copied from the assets on first run, then the connection is created and
-   * opened and the schema is brought up to date.
+   * opened, referential integrity is turned on (see {@link enableForeignKeys}) and the schema is
+   * brought up to date.
    * @returns A promise resolving to the open connection.
    */
   private async open(): Promise<SQLiteDBConnection> {
@@ -72,14 +73,34 @@ export class DatabaseService {
 
     const db = await this.sqlite.createConnection(this.DB_NAME, false, 'no-encryption', 1, false);
     await db.open();
+    await this.enableForeignKeys(db);
 
     if (await this.migrations.migrate(db)) {
       await this.persist();
-      console.log('Schéma mis à jour : table `categories` et `notes.category_id`');
+      console.log('Schéma de la base mis à jour');
     }
 
     console.log('Base de données initialisée avec succès');
     return db;
+  }
+
+  /**
+   * Turns referential integrity on for the shared connection. SQLite defaults `foreign_keys` to
+   * off, and while it is off the engine silently ignores every declared action: the
+   * `ON DELETE CASCADE` of `kanban_columns.kanban_id` would leave a deleted board's columns
+   * behind, and the `ON DELETE SET NULL` of `notes.category_id` would leave notes pointing at a
+   * category that no longer exists (see
+   * .agent/KANBAN/EDITION_LISTES/APPROCHE_KANBAN_EDITION_LISTES.md, D-L14).
+   *
+   * Two constraints dictate where this call sits. The pragma is scoped to the connection, so it
+   * belongs to {@link open} rather than to any data source; and SQLite ignores it inside a
+   * transaction, so it is posed before the migration — whose scripts run in one — and executed
+   * with `transaction: false`, the plugin wrapping `execute` in a transaction by default.
+   * @param db The freshly opened connection to configure.
+   * @returns A promise that resolves once the pragma has been posed.
+   */
+  private async enableForeignKeys(db: SQLiteDBConnection): Promise<void> {
+    await db.execute('PRAGMA foreign_keys = ON', false);
   }
 
   /**

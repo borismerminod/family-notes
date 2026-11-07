@@ -7,7 +7,7 @@ import { SchemaMigrationService } from './schema-migration.service';
 describe('DatabaseService', () => {
   let service: DatabaseService;
   let migrations: { migrate: ReturnType<typeof vi.fn> };
-  let db: { open: ReturnType<typeof vi.fn> };
+  let db: { open: ReturnType<typeof vi.fn>; execute: ReturnType<typeof vi.fn> };
   let sqlite: {
     isDatabase: ReturnType<typeof vi.fn>;
     copyFromAssets: ReturnType<typeof vi.fn>;
@@ -21,7 +21,10 @@ describe('DatabaseService', () => {
     vi.spyOn(customElements, 'whenDefined').mockResolvedValue(undefined as never);
 
     migrations = { migrate: vi.fn().mockResolvedValue(false) };
-    db = { open: vi.fn().mockResolvedValue(undefined) };
+    db = {
+      open: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockResolvedValue({ changes: { changes: 0 } }),
+    };
     sqlite = {
       isDatabase: vi.fn().mockResolvedValue({ result: true }),
       copyFromAssets: vi.fn().mockResolvedValue(undefined),
@@ -69,6 +72,25 @@ describe('DatabaseService', () => {
       await service.connect();
 
       expect(migrations.migrate).toHaveBeenCalledWith(db);
+    });
+
+    it('active les clés étrangères hors transaction, avant la migration', async () => {
+      const posedPragma: string[] = [];
+      db.execute.mockImplementation(async (statement: string) => {
+        posedPragma.push(statement);
+        return { changes: { changes: 0 } };
+      });
+      migrations.migrate.mockImplementation(async () => {
+        expect(posedPragma).toEqual(['PRAGMA foreign_keys = ON']);
+        return false;
+      });
+
+      await service.connect();
+
+      const transactionFlag = db.execute.mock.calls[0][1];
+      expect(db.execute).toHaveBeenCalledWith('PRAGMA foreign_keys = ON', false);
+      expect(transactionFlag).toBe(false);
+      expect(migrations.migrate).toHaveBeenCalled();
     });
 
     it('flushe le web store quand la migration a modifié le schéma', async () => {

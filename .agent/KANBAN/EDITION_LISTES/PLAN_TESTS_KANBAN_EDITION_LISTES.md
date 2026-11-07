@@ -4,7 +4,7 @@
 > **Démarche :** TDD **boîte noire**, cas déduits d'un diagramme **Cause-Effet** co-construit.
 > **SPEC :** `.agent/KANBAN/EDITION_LISTES/FEATURE_KANBAN_EDITION_LISTES.md` (US1 → US7)
 > **Approche :** `.agent/KANBAN/EDITION_LISTES/APPROCHE_KANBAN_EDITION_LISTES.md`
-> (décisions `D-L1` → `D-L23`, lots `A` → `K`)
+> (décisions `D-L1` → `D-L24`, lots `A` → `K`)
 > **Conventions de test :** `kanban-service.spec.ts` et `kanban-editor.spec.ts` du lot précédent
 > font foi (doublure de `DatabaseService` par l'injection, jamais du module sqlite ; assertions sur
 > les **données renvoyées**, jamais sur le texte SQL émis).
@@ -35,6 +35,14 @@ Quatre cibles, dans l'ordre où elles seront implémentées :
   produite. Conséquence à assumer : la correction de `SchemaMigrationService` (`D-L15`, qui ferme
   `E1` de `REVUE_KANBAN_EDITION.md`) et l'activation des clés étrangères (`D-L14`) seront
   **vérifiées à la main sur l'appareil**, pas par des tests.
+  **Nuance apportée le 2026-11-07, le lot `A` étant livré :** le socle n'est pas resté sans filet
+  pour autant. Les cas de `schema-migration.service.spec.ts` ont dû être **reprises** de toute
+  façon (le court-circuit qu'ils testaient a disparu) et couvrent maintenant les gardes par étape,
+  `database.service.spec.ts` vérifie que le pragma est posé hors transaction et avant la
+  migration, et le SQL lui-même a été joué sur un **moteur SQLite réel** (`sql.js`) : cascade,
+  `CHECK`, upsert `ON CONFLICT(id)`, rejouabilité. Ce qui reste **réellement** à l'appareil est le
+  seul point que ni les bouchons ni `sql.js` ne peuvent dire : que `PRAGMA foreign_keys = ON`
+  prenne bien sur la connexion ouverte par le plugin **natif**.
 - Tout ce que la SPEC écarte déjà : les **cartes** dans les colonnes, le **glisser-déposer**, le
   déplacement de plus d'un cran, l'enregistrement automatique, la couleur / description / limite
   WIP d'une colonne, l'unicité des noms, annuler / rétablir, l'interception du bouton « retour »

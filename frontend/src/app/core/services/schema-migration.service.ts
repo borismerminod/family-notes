@@ -16,6 +16,10 @@ const SCRIPTS = {
   notes: 'schema_notes.sql',
   /** Ancien format (`notes.category` en texte libre) vers le modèle relationnel. */
   relationalCategories: 'migration_relational_categories.sql',
+  /** Table `kanbans` (tableaux kanban). */
+  kanban: 'schema_kanban.sql',
+  /** Table `kanban_columns` (les colonnes d'un tableau, « listes » côté interface). */
+  kanbanColumns: 'schema_kanban_columns.sql',
 } as const;
 
 /**
@@ -28,22 +32,45 @@ const SCRIPTS = {
  * réécrire ici.
  *
  * La décision est prise à partir du schéma réellement trouvé plutôt que d'un numéro de version
- * (`PRAGMA user_version` appartient au mécanisme d'upgrade du plugin Capacitor) : la présence de
- * la table `categories` marque une base à jour, et une seule lecture suffit alors à tout sauter.
+ * (`PRAGMA user_version` appartient au mécanisme d'upgrade du plugin Capacitor). Chaque étape
+ * porte **sa propre garde** et aucune ne court-circuite les suivantes : la présence de la table
+ * `categories` marquait auparavant « base à jour » et tout était sauté, ce qui empêchait
+ * `schema_kanban.sql` d'être joué un jour sur un appareil déjà installé — constat `E1` de
+ * `REVUE_KANBAN_EDITION.md`, refermé par la décision `D-L15` de
+ * `.agent/KANBAN/EDITION_LISTES/APPROCHE_KANBAN_EDITION_LISTES.md`.
  */
 @Injectable({
   providedIn: 'root',
 })
 export class SchemaMigrationService {
   /**
-   * Amène la base au schéma courant : table `categories` et clé étrangère `notes.category_id`.
-   * Une base restée à l'ancien format déclenchait jusqu'ici l'erreur `no such table: categories`
-   * sur la moindre lecture de notes.
+   * Amène la base au schéma courant : notes et catégories relationnelles, table `kanbans`, puis
+   * table `kanban_columns`. Les trois étapes sont **indépendantes** et jouées dans cet ordre —
+   * `kanban_columns` référence `kanbans`, qui doit donc exister avant elle — et chacune ne fait
+   * rien si ce qu'elle apporte est déjà en place.
    * @param db La connexion ouverte à migrer.
-   * @returns Une promesse résolue à `true` si le schéma a été modifié (l'appelant doit alors
-   * flusher le store), `false` si la base était déjà à jour.
+   * @returns Une promesse résolue à `true` si **au moins une** étape a modifié le schéma
+   * (l'appelant doit alors flusher le store), `false` si la base était déjà à jour.
    */
   async migrate(db: SQLiteDBConnection): Promise<boolean> {
+    const relationalNotesCreated = await this.ensureRelationalNotes(db);
+    const kanbanTableCreated = await this.ensureKanbanTable(db);
+    const kanbanColumnsTableCreated = await this.ensureKanbanColumnsTable(db);
+
+    return relationalNotesCreated || kanbanTableCreated || kanbanColumnsTableCreated;
+  }
+
+  /**
+   * Étape 1 — notes et catégories au modèle relationnel, gardée par la présence de la table
+   * `categories`. Trois bases possibles quand elle manque : une base **vide**, qui reçoit le
+   * schéma courant complet ; une base à l'**ancien format** (`notes.category` en texte libre),
+   * qui passe par la migration relationnelle ; et le **cas limite** d'une base dont les notes
+   * sont déjà relationnelles mais sans table des catégories, qui reçoit cette table et, si elle
+   * lui manque aussi, la colonne `notes.category_id`.
+   * @param db La connexion à migrer.
+   * @returns Une promesse résolue à `true` si l'étape a modifié le schéma.
+   */
+  protected async ensureRelationalNotes(db: SQLiteDBConnection): Promise<boolean> {
     const hasCategories = (await db.isTable('categories')).result ?? false;
     if (hasCategories) {
       return false;
@@ -52,19 +79,63 @@ export class SchemaMigrationService {
     const noteColumns = await this.tableColumns(db, 'notes');
 
     if (noteColumns.length === 0) {
-      // Base vide : on crée le schéma courant.
       await this.runScript(db, SCRIPTS.notes);
-    } else if (noteColumns.includes('category')) {
-      // Ancien format : les noms de catégories deviennent des lignes de `categories`.
-      await this.runScript(db, SCRIPTS.relationalCategories);
-    } else {
-      // Cas limite : notes déjà relationnelles mais catégories absentes.
-      await this.runScript(db, SCRIPTS.categories);
-      if (!noteColumns.includes('category_id')) {
-        await db.execute('ALTER TABLE notes ADD COLUMN category_id TEXT REFERENCES categories(id)');
-      }
+      return true;
     }
 
+    if (noteColumns.includes('category')) {
+      await this.runScript(db, SCRIPTS.relationalCategories);
+      return true;
+    }
+
+    await this.runScript(db, SCRIPTS.categories);
+    if (!noteColumns.includes('category_id')) {
+      await db.execute('ALTER TABLE notes ADD COLUMN category_id TEXT REFERENCES categories(id)');
+    }
+    return true;
+  }
+
+  /**
+   * Étape 2 — la table des tableaux kanban. Elle n'existait jusqu'ici que par le **seed** livré
+   * dans les assets, jamais par une migration : un appareil installé avant le lot `KANBAN/CRUD`
+   * n'avait aucun moyen de l'obtenir (constat `E1`).
+   * @param db La connexion à migrer.
+   * @returns Une promesse résolue à `true` si la table a été créée.
+   */
+  protected async ensureKanbanTable(db: SQLiteDBConnection): Promise<boolean> {
+    return this.createTableIfMissing(db, 'kanbans', SCRIPTS.kanban);
+  }
+
+  /**
+   * Étape 3 — la table des colonnes d'un tableau. Le seed binaire n'est pas regénéré pour ce lot
+   * (`D-L15`) : cette étape la crée donc partout, installation neuve comprise.
+   * @param db La connexion à migrer.
+   * @returns Une promesse résolue à `true` si la table a été créée.
+   */
+  protected async ensureKanbanColumnsTable(db: SQLiteDBConnection): Promise<boolean> {
+    return this.createTableIfMissing(db, 'kanban_columns', SCRIPTS.kanbanColumns);
+  }
+
+  /**
+   * Joue le script qui crée une table, à la seule condition qu'elle manque. Les scripts sont
+   * eux-mêmes rejouables (`CREATE TABLE IF NOT EXISTS`) : la garde sert à savoir si le schéma a
+   * **changé**, pas à protéger la base.
+   * @param db La connexion à migrer.
+   * @param table Le nom de la table attendue.
+   * @param script Le nom de fichier du script qui la crée, relatif à {@link MIGRATIONS_PATH}.
+   * @returns Une promesse résolue à `true` si le script a été exécuté.
+   */
+  private async createTableIfMissing(
+    db: SQLiteDBConnection,
+    table: string,
+    script: string,
+  ): Promise<boolean> {
+    const alreadyExists = (await db.isTable(table)).result ?? false;
+    if (alreadyExists) {
+      return false;
+    }
+
+    await this.runScript(db, script);
     return true;
   }
 
