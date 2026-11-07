@@ -8,3 +8,4 @@ export * from './note-block.model';
 export * from './block-style.model';
 export * from './category.model';
 export * from './kanban.model';
+export * from './kanban-column.model';
