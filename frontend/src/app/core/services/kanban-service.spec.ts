@@ -2,16 +2,35 @@ import { TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { KanbanService } from './kanban-service';
+import { KanbanColumnService } from './kanban-column-service';
 import { DatabaseService } from './database.service';
-import { Kanban } from '../models';
+import { Kanban, KanbanColumn } from '../models';
 
-/** Contrat CIBLE du service (TDD) — `.agent/KANBAN/CRUD/PLAN_TESTS_KANBAN_CRUD.md`, partie A. */
+/**
+ * Expected shape of what a grouped save hands back (`D-L24`). Declared here rather than imported
+ * from `../models`, because the spec states the contract it needs before the code offers it: an
+ * import of a model yet to be written would keep the whole bundle compile-red, every suite with it.
+ */
+interface KanbanSaveResult {
+  kanban: Kanban;
+  columnsSaved: boolean;
+}
+
+/**
+ * Contrat CIBLE du service (TDD) — `.agent/KANBAN/CRUD/PLAN_TESTS_KANBAN_CRUD.md`, partie A, et
+ * `.agent/KANBAN/EDITION_LISTES/PLAN_TESTS_KANBAN_EDITION_LISTES.md` (groupe 4) pour la dernière.
+ */
 interface KanbanServiceContract {
   getAllKanbans(): Promise<Kanban[]>;
   getKanbanById(id: string): Promise<Kanban | null>;
   createKanban(name: string): Promise<Kanban>;
   renameKanban(id: string, name: string): Promise<Kanban>;
   deleteKanban(id: string): Promise<void>;
+  saveKanbanWithColumns(
+    id: string | null,
+    name: string,
+    columns: KanbanColumn[],
+  ): Promise<KanbanSaveResult>;
 }
 
 const mocks = vi.hoisted(() => {
@@ -26,7 +45,11 @@ const mocks = vi.hoisted(() => {
     connect: vi.fn(),
     persist: vi.fn(),
   };
-  return { dbConnection, database };
+  const columnService = {
+    getColumnsByKanbanId: vi.fn(),
+    saveColumnsForKanban: vi.fn(),
+  };
+  return { dbConnection, database, columnService };
 });
 
 function dbRow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -43,6 +66,26 @@ const ROW_RECENT = dbRow({ id: 'k-recent', name: 'Courses', created_at: '2026-09
 const ROW_MIDDLE = dbRow({ id: 'k-middle', name: 'Travaux maison', created_at: '2026-08-15 09:00:00', updated_at: '2026-09-25 11:00:00' });
 const ROW_OLDEST = dbRow({ id: 'k-oldest', name: 'Vacances', created_at: '2026-07-02 20:15:00', updated_at: '2026-08-30 10:05:00' });
 
+const COLUMN_TODO: KanbanColumn = { id: 'col-todo', name: 'À faire', position: 0 };
+const COLUMN_DOING: KanbanColumn = { id: 'col-doing', name: 'En cours', position: 1 };
+const COLUMN_DONE: KanbanColumn = { id: 'col-done', name: 'Terminé', position: 2 };
+const COLUMN_VALISES: KanbanColumn = { id: 'col-valises', name: 'Valises', position: 0 };
+
+/**
+ * The composition each board holds, as the column service would hand it back — one entry per
+ * board. Reset before each case and seeded by {@link givenStoredColumns}.
+ */
+let storedColumnsByKanban: Record<string, KanbanColumn[]> = {};
+
+/**
+ * Seeds the compositions the column service answers with, several boards on purpose: a board's
+ * own columns are only provably its own when another board carries others (E21, groupe 3).
+ * @param columnsByKanban The composition of each board, keyed by board identifier.
+ */
+function givenStoredColumns(columnsByKanban: Record<string, KanbanColumn[]>): void {
+  storedColumnsByKanban = { ...columnsByKanban };
+}
+
 describe('KanbanService (accès SQLite)', () => {
   let service: KanbanServiceContract;
 
@@ -56,8 +99,19 @@ describe('KanbanService (accès SQLite)', () => {
     mocks.database.connect.mockReset().mockResolvedValue(mocks.dbConnection);
     mocks.database.persist.mockReset().mockResolvedValue(undefined);
 
+    storedColumnsByKanban = {};
+    mocks.columnService.getColumnsByKanbanId
+      .mockReset()
+      .mockImplementation(async (kanbanId: string) => storedColumnsByKanban[kanbanId] ?? []);
+    mocks.columnService.saveColumnsForKanban
+      .mockReset()
+      .mockImplementation(async (_kanbanId: string, columns: KanbanColumn[]) => columns);
+
     TestBed.configureTestingModule({
-      providers: [{ provide: DatabaseService, useValue: mocks.database }],
+      providers: [
+        { provide: DatabaseService, useValue: mocks.database },
+        { provide: KanbanColumnService, useValue: mocks.columnService },
+      ],
     });
     service = TestBed.inject(KanbanService) as unknown as KanbanServiceContract;
   });
@@ -92,6 +146,24 @@ describe('KanbanService (accès SQLite)', () => {
 
       expect(kanbans).toEqual([]);
     });
+
+    /**
+     * Groupe 4 of the EDITION_LISTES plan (E28, `D-L8`), sitting here because it bears on this
+     * method: the board list displays no column, so this read stays a single query on `kanbans`
+     * and its boards come back with **no** `columns` field — « not loaded », where `getKanbanById`
+     * hands back « loaded, possibly empty » (T3.3). The boards are given columns on purpose, so
+     * that « none was read » cannot pass for « there was none to read ».
+     */
+    it('T4.9 renvoie les tableaux sans colonnes et ne lit pas la table des colonnes', async () => {
+      mocks.dbConnection.query.mockResolvedValue({ values: [ROW_RECENT, ROW_MIDDLE] });
+      givenStoredColumns({ 'k-recent': [COLUMN_TODO], 'k-middle': [COLUMN_DOING] });
+
+      const kanbans = await service.getAllKanbans();
+      const someBoardCarriesComposition = kanbans.some((kanban) => 'columns' in kanban);
+
+      expect(someBoardCarriesComposition).toBe(false);
+      expect(mocks.columnService.getColumnsByKanbanId).not.toHaveBeenCalled();
+    });
   });
 
   /**
@@ -116,6 +188,7 @@ describe('KanbanService (accès SQLite)', () => {
         id: 'k-asked',
         name: 'Travaux maison',
         updatedAt: '2026-09-25 11:00:00',
+        columns: [],
       };
       const exposesCreationDate =
         kanban !== null && ('created_at' in kanban || 'createdAt' in kanban);
@@ -139,13 +212,220 @@ describe('KanbanService (accès SQLite)', () => {
       mocks.database.connect.mockRejectedValue(new Error('préparation impossible'));
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [{ provide: DatabaseService, useValue: mocks.database }],
+        providers: [
+          { provide: DatabaseService, useValue: mocks.database },
+          { provide: KanbanColumnService, useValue: mocks.columnService },
+        ],
       });
       const unpreparedService = TestBed.inject(KanbanService) as unknown as KanbanServiceContract;
       const readOnUnpreparedDatabase = unpreparedService.getKanbanById('k-asked');
 
       await expect(readOnFailingDatabase).rejects.toThrow();
       await expect(readOnUnpreparedDatabase).rejects.toThrow();
+    });
+  });
+
+  /**
+   * Groupe 3 — Lire un tableau et ses colonnes (`.agent/KANBAN/EDITION_LISTES/PLAN_TESTS_KANBAN_EDITION_LISTES.md`,
+   * §6, `KanbanService`). Covers E21 (the board comes back with its columns, in order), E22 (empty
+   * composition), E23 (unknown identifier, no column read) and E57 (read error rethrown), serving US1.
+   *
+   * Beware the numbering, as in the block above: these `T3.x` belong to the EDITION_LISTES plan and
+   * are NOT the `T3.x` of the CRUD plan, which live in the 'createKanban' block below. The describe
+   * path is what tells them apart in the test output.
+   */
+  describe('getKanbanById enrichi (plan EDITION_LISTES, groupe 3)', () => {
+    it('T3.1 renvoie le tableau avec ses colonnes, dans l\'ordre de leurs positions', async () => {
+      const row = dbRow({ id: 'k-courses', name: 'Courses', updated_at: '2026-11-07 09:00:00' });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+      givenStoredColumns({ 'k-courses': [COLUMN_TODO, COLUMN_DOING, COLUMN_DONE] });
+
+      const kanban = await service.getKanbanById('k-courses');
+      const loadedColumns = kanban?.columns ?? [];
+      const columnNames = loadedColumns.map((column) => column.name);
+      const positions = loadedColumns.map((column) => column.position);
+
+      expect(columnNames).toEqual(['À faire', 'En cours', 'Terminé']);
+      expect(positions).toEqual([0, 1, 2]);
+    });
+
+    it('T3.2 ne renvoie que les colonnes du tableau demandé, alors qu\'un autre tableau en porte d\'autres', async () => {
+      const row = dbRow({ id: 'k-courses', name: 'Courses', updated_at: '2026-11-07 09:00:00' });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+      givenStoredColumns({
+        'k-courses': [COLUMN_TODO, COLUMN_DOING],
+        'k-vacances': [COLUMN_VALISES],
+      });
+
+      const kanban = await service.getKanbanById('k-courses');
+      const loadedColumns = kanban?.columns ?? [];
+      const columnIds = loadedColumns.map((column) => column.id);
+
+      expect(columnIds).toEqual(['col-todo', 'col-doing']);
+    });
+
+    it('T3.3 renvoie une composition vide pour un tableau sans colonne, et non un champ absent', async () => {
+      const row = dbRow({ id: 'k-neuf', name: 'Tableau neuf', updated_at: '2026-11-07 09:00:00' });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+      givenStoredColumns({});
+
+      const kanban = await service.getKanbanById('k-neuf');
+      const carriesLoadedComposition = kanban !== null && 'columns' in kanban;
+
+      expect(carriesLoadedComposition).toBe(true);
+      expect(kanban?.columns).toEqual([]);
+    });
+
+    it('T3.4 ne renvoie rien pour un identifiant inexistant, sans demander la moindre colonne', async () => {
+      mocks.dbConnection.query.mockResolvedValue({ values: [] });
+      givenStoredColumns({ 'k-courses': [COLUMN_TODO, COLUMN_DOING] });
+
+      const read = service.getKanbanById('k-absent');
+
+      await expect(read).resolves.toBeNull();
+      expect(mocks.columnService.getColumnsByKanbanId).not.toHaveBeenCalled();
+    });
+
+    it('T3.5 relance l\'erreur de lecture du tableau au lieu de la convertir en tableau absent', async () => {
+      const boardReadFailure = new Error('lecture du tableau impossible');
+      mocks.dbConnection.query.mockRejectedValue(boardReadFailure);
+
+      const read = service.getKanbanById('k-courses');
+
+      await expect(read).rejects.toThrow('lecture du tableau impossible');
+    });
+
+    it('T3.6 relance l\'erreur de lecture des colonnes au lieu de la replier sur une composition vide', async () => {
+      const row = dbRow({ id: 'k-courses', name: 'Courses', updated_at: '2026-11-07 09:00:00' });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+      const columnsReadFailure = new Error('lecture des colonnes impossible');
+      mocks.columnService.getColumnsByKanbanId.mockRejectedValue(columnsReadFailure);
+
+      const read = service.getKanbanById('k-courses');
+
+      await expect(read).rejects.toThrow('lecture des colonnes impossible');
+    });
+  });
+
+  /**
+   * Groupe 4 — Enregistrer un tableau et sa composition (`.agent/KANBAN/EDITION_LISTES/PLAN_TESTS_KANBAN_EDITION_LISTES.md`,
+   * §6, `KanbanService`). Covers E24 (new board created then its columns), E25 (existing board
+   * renamed, redated, then its columns), E26 (a failing board write throws and writes no column),
+   * E27 (a failing column write does not throw, `D-L24`) and E28 (`getAllKanbans` carries no
+   * column), serving US6 and US7.
+   *
+   * Beware the numbering once more: these `T4.x` belong to the EDITION_LISTES plan, not to the
+   * `T4.x` of the CRUD plan living in the 'renameKanban' block below.
+   */
+  describe('saveKanbanWithColumns (plan EDITION_LISTES, groupe 4)', () => {
+    it('T4.1 crée le tableau neuf, puis enregistre ses colonnes sous l\'identifiant créé', async () => {
+      const askedComposition = [COLUMN_TODO, COLUMN_DOING];
+
+      const result = await service.saveKanbanWithColumns(null, 'Courses', askedComposition);
+      const savedBoardId = result.kanban.id;
+      const columnSaveCall = mocks.columnService.saveColumnsForKanban.mock.calls[0];
+      const columnsOwnerId = columnSaveCall[0];
+      const savedComposition = columnSaveCall[1];
+
+      expect(savedBoardId).toBeTruthy();
+      expect(result.kanban.name).toBe('Courses');
+      expect(columnsOwnerId).toBe(savedBoardId);
+      expect(savedComposition).toEqual(askedComposition);
+      expect(result.columnsSaved).toBe(true);
+    });
+
+    it('T4.2 crée le tableau neuf sans colonne en transmettant la composition vide, sans autre écriture', async () => {
+      const emptyComposition: KanbanColumn[] = [];
+
+      const result = await service.saveKanbanWithColumns(null, 'Tableau neuf', emptyComposition);
+      const columnSaveCall = mocks.columnService.saveColumnsForKanban.mock.calls[0];
+      const columnsOwnerId = columnSaveCall[0];
+      const savedComposition = columnSaveCall[1];
+      const boardWriteCount = mocks.dbConnection.run.mock.calls.length;
+
+      expect(columnsOwnerId).toBe(result.kanban.id);
+      expect(savedComposition).toEqual([]);
+      expect(result.columnsSaved).toBe(true);
+      expect(boardWriteCount).toBe(1);
+    });
+
+    it('T4.3 renomme et redate le tableau existant, puis enregistre ses colonnes sous son identifiant', async () => {
+      const askedComposition = [COLUMN_TODO, COLUMN_DOING];
+      const instantBeforeSave = new Date().toISOString();
+
+      const result = await service.saveKanbanWithColumns('k-courses', 'Courses du samedi', askedComposition);
+      const columnSaveCall = mocks.columnService.saveColumnsForKanban.mock.calls[0];
+      const columnsOwnerId = columnSaveCall[0];
+      const isRefreshed = result.kanban.updatedAt >= instantBeforeSave;
+
+      expect(result.kanban.id).toBe('k-courses');
+      expect(result.kanban.name).toBe('Courses du samedi');
+      expect(isRefreshed).toBe(true);
+      expect(columnsOwnerId).toBe('k-courses');
+    });
+
+    it('T4.4 laisse la composition inchangée telle quelle, en redatant quand même le tableau', async () => {
+      const storedComposition = [COLUMN_TODO, COLUMN_DOING];
+      givenStoredColumns({ 'k-courses': storedComposition });
+      const unchangedComposition = [COLUMN_TODO, COLUMN_DOING];
+      const instantBeforeSave = new Date().toISOString();
+
+      const result = await service.saveKanbanWithColumns('k-courses', 'Courses', unchangedComposition);
+      const columnSaveCall = mocks.columnService.saveColumnsForKanban.mock.calls[0];
+      const savedComposition = columnSaveCall[1];
+      const isRefreshed = result.kanban.updatedAt >= instantBeforeSave;
+
+      expect(savedComposition).toEqual(storedComposition);
+      expect(result.kanban.columns).toEqual(storedComposition);
+      expect(isRefreshed).toBe(true);
+    });
+
+    it('T4.5 jette quand la création du tableau échoue, sans tenter la moindre écriture de colonnes', async () => {
+      const creationFailure = new Error('création impossible');
+      mocks.dbConnection.run.mockRejectedValue(creationFailure);
+      const askedComposition = [COLUMN_TODO, COLUMN_DOING];
+
+      const save = service.saveKanbanWithColumns(null, 'Courses', askedComposition);
+
+      await expect(save).rejects.toThrow('création impossible');
+      expect(mocks.columnService.saveColumnsForKanban).not.toHaveBeenCalled();
+    });
+
+    it('T4.6 jette quand le renommage du tableau échoue, sans tenter la moindre écriture de colonnes', async () => {
+      const renameFailure = new Error('renommage impossible');
+      mocks.dbConnection.run.mockRejectedValue(renameFailure);
+      const askedComposition = [COLUMN_TODO, COLUMN_DOING];
+
+      const save = service.saveKanbanWithColumns('k-courses', 'Courses du samedi', askedComposition);
+
+      await expect(save).rejects.toThrow('renommage impossible');
+      expect(mocks.columnService.saveColumnsForKanban).not.toHaveBeenCalled();
+    });
+
+    it('T4.7 ne jette pas quand les colonnes échouent après un renommage, et renvoie le tableau avec « colonnes non enregistrées »', async () => {
+      const columnsWriteFailure = new Error('écriture des colonnes impossible');
+      mocks.columnService.saveColumnsForKanban.mockRejectedValue(columnsWriteFailure);
+      const askedComposition = [COLUMN_TODO, COLUMN_DOING];
+
+      const result = await service.saveKanbanWithColumns('k-courses', 'Courses du samedi', askedComposition);
+
+      expect(result.kanban.id).toBe('k-courses');
+      expect(result.kanban.name).toBe('Courses du samedi');
+      expect(result.columnsSaved).toBe(false);
+    });
+
+    it('T4.8 renvoie le tableau créé avec son identifiant quand les colonnes échouent, pour qu\'un ré-essai ne duplique pas', async () => {
+      const columnsWriteFailure = new Error('écriture des colonnes impossible');
+      mocks.columnService.saveColumnsForKanban.mockRejectedValue(columnsWriteFailure);
+      const askedComposition = [COLUMN_TODO, COLUMN_DOING];
+
+      const result = await service.saveKanbanWithColumns(null, 'Courses', askedComposition);
+      const columnSaveCall = mocks.columnService.saveColumnsForKanban.mock.calls[0];
+      const attemptedOwnerId = columnSaveCall[0];
+
+      expect(result.kanban.id).toBeTruthy();
+      expect(attemptedOwnerId).toBe(result.kanban.id);
+      expect(result.columnsSaved).toBe(false);
     });
   });
 
@@ -254,7 +534,10 @@ describe('KanbanService (accès SQLite)', () => {
       mocks.database.connect.mockRejectedValue(new Error('préparation impossible'));
       TestBed.resetTestingModule();
       TestBed.configureTestingModule({
-        providers: [{ provide: DatabaseService, useValue: mocks.database }],
+        providers: [
+          { provide: DatabaseService, useValue: mocks.database },
+          { provide: KanbanColumnService, useValue: mocks.columnService },
+        ],
       });
       const failingService = TestBed.inject(KanbanService) as unknown as KanbanServiceContract;
 
