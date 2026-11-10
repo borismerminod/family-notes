@@ -72,17 +72,109 @@
       />
     </div>
 
-    <!-- Board content area, empty in this batch: the anchor point of the lists and the cards
-         of the next one (D-E11). -->
+    <!-- Board content area: one panel per column of the displayed composition, horizontally and
+         in order, scrollable when they overflow the screen (D-L21). -->
     <div class="board-canvas">
-      <div class="ghost-column">
-        <span class="icon icon-kanban" aria-hidden="true"></span>
-        Ce tableau est vide.
-        <small>Les listes et les cartes arriveront dans un prochain lot.</small>
-      </div>
-      <div class="ghost-column faded"></div>
+      @for (column of columns(); track column.id) {
+        <!-- The editor renders the two move buttons under the column, because it alone knows its
+             neighbours, hence whether a move is possible (D-L23). Under and not beside: a gutter
+             free of any control is what makes two lists read as two cards. They are disabled at
+             the ends of the board, and not hidden. -->
+        <div class="column-slot">
+          <app-kanban-column
+            [column]="column"
+            (renamed)="onRenameColumn(column.id, $event)"
+            (removeRequested)="onRemoveColumn(column)"
+          />
+
+          <div class="column-move">
+            <button
+              type="button"
+              class="btn-move btn-move-left"
+              [disabled]="$first"
+              (click)="onMoveColumnLeft($index)"
+              [attr.aria-label]="'Déplacer la liste « ' + column.name + ' » vers la gauche'"
+            >
+              ←
+            </button>
+
+            <button
+              type="button"
+              class="btn-move btn-move-right"
+              [disabled]="$last"
+              (click)="onMoveColumnRight($index)"
+              [attr.aria-label]="'Déplacer la liste « ' + column.name + ' » vers la droite'"
+            >
+              →
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Empty state of a board without any list, which invites adding one. It replaces the
+           ghost column of the previous batch (D-E11 withdrawn). -->
+      @if (columns().length === 0) {
+        <div class="empty no-columns">
+          <span class="icon icon-kanban" aria-hidden="true"></span>
+          <p>Ce tableau n'a aucune liste.<br>Touchez « + » pour en ajouter une.</p>
+        </div>
+      }
+
+      <!-- The add gesture closes the content area, and stays visible on an empty board (D-L23).
+           Touching it gives its place to the in-place field of the new list (D-L18), validated or
+           given up by two buttons, the keyboard being out of reach on a phone. -->
+      @if (addingColumn()) {
+        <div class="new-column">
+          <label class="sr-only" for="kanban-new-column-name">Nom de la nouvelle liste</label>
+          <input
+            id="kanban-new-column-name"
+            type="text"
+            class="new-column-name"
+            [value]="newColumnName()"
+            (input)="newColumnName.set($any($event.target).value)"
+          />
+
+          <button
+            type="button"
+            class="btn-column-action btn-add-confirm"
+            (click)="onAddColumn()"
+            aria-label="Valider la nouvelle liste"
+          >
+            ✓
+          </button>
+
+          <button
+            type="button"
+            class="btn-column-action btn-add-cancel"
+            (click)="onCancelAddColumn()"
+            aria-label="Abandonner l'ajout d'une liste"
+          >
+            ✗
+          </button>
+        </div>
+      } @else {
+        <button
+          type="button"
+          class="btn-add-column"
+          (click)="onStartAddColumn()"
+          aria-label="Ajouter une liste"
+        >
+          +
+        </button>
+      }
     </div>
   }
+
+  <!-- Removing a list: the very popup the deletions use, naming the list at stake (D-L4). It is
+       a second instance, with its own open state: the question and what follows it differ from
+       those of the abandon popup below. -->
+  <app-confirm-dialog
+    [message]="'Retirer la liste « ' + (columnToRemove()?.name ?? '') + ' » ?'"
+    [(open)]="removeConfirmOpen"
+    confirmLabel="Retirer"
+    cancelLabel="Annuler"
+    (answered)="onRemoveConfirmed($event)"
+  />
 
   <!-- Giving up an unsaved name: the very popup the deletions use (US4, D2). -->
   <app-confirm-dialog

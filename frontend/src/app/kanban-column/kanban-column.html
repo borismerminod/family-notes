@@ -1,0 +1,57 @@
+<div class="kanban-column">
+
+  <!-- Header: the name — touch it to rename in place (D-L18) — and the trash of this column
+       (D-L23). The rename field takes the place of the name while it is open. -->
+  <header class="column-header">
+    @if (isRenaming()) {
+      <label class="sr-only" [for]="'kanban-column-name-' + column().id">Nom de la liste</label>
+      <input
+        [id]="'kanban-column-name-' + column().id"
+        type="text"
+        class="column-name-input"
+        [value]="typedName()"
+        (input)="typedName.set($any($event.target).value)"
+      />
+
+      <button
+        type="button"
+        class="btn-icon btn-rename-confirm"
+        (click)="onValidateRename()"
+        [attr.aria-label]="'Valider le nom de la liste « ' + column().name + ' »'"
+      >
+        ✓
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon btn-rename-cancel"
+        (click)="onCancelRename()"
+        [attr.aria-label]="'Abandonner le renommage de la liste « ' + column().name + ' »'"
+      >
+        ✗
+      </button>
+    } @else {
+      <button
+        type="button"
+        class="column-name"
+        (click)="onStartRename()"
+        [attr.aria-label]="'Renommer la liste « ' + column().name + ' »'"
+      >
+        {{ column().name }}
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon btn-danger btn-remove-column"
+        (click)="onRemoveRequested()"
+        [attr.aria-label]="'Retirer la liste « ' + column().name + ' »'"
+      >
+        <span class="icon icon-trash" aria-hidden="true"></span>
+      </button>
+    }
+  </header>
+
+  <!-- Area reserved for the cards of the next batch: present and empty on purpose (D-L21). -->
+  <div class="column-cards"></div>
+
+</div>

@@ -233,37 +233,146 @@
 .btn-retry:hover,
 .btn-back-to-list:hover { opacity: .92; }
 
-/* ---- Board content area, empty in this batch (D-E11) ---- */
+/* ---- Board content area: the lists, side by side, scrolling horizontally (US1) ---- */
 .board-canvas {
   flex: 1 1 auto;
   display: flex;
-  gap: 12px;
+  align-items: stretch;
+  gap: 16px;
   padding: 16px 16px calc(16px + var(--safe-bottom));
-  overflow: hidden;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
-.ghost-column {
-  flex: 0 0 200px;
-  border: 2px dashed var(--separator);
-  border-radius: var(--radius);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 20px;
+/* ---- Empty state of a board without any list, on the model of the board list ---- */
+.no-columns {
+  flex: 0 0 auto;
+  align-self: center;
   text-align: center;
   color: var(--text-2);
   font-size: 14px;
 }
 
-.ghost-column small {
-  font-size: 12px;
-  opacity: .8;
+.no-columns .icon {
+  width: 40px;
+  height: 40px;
+  opacity: .4;
 }
 
-.ghost-column.faded {
-  opacity: .45;
+/* ---- One list and its two move buttons, which the editor renders around it (D-L23) ---- */
+/* 'min-width: max-content' is what keeps a list at its full width whatever the room left in the
+   content area: without it the slot is squeezed by the ones that do not fit, the list inside
+   overflows it, and the move buttons end up drawn over the next list. */
+.column-slot {
+  flex: 0 0 auto;
+  min-width: max-content;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
+/* ---- One list and its two move buttons, which the editor renders under it (D-L23) ---- */
+
+/* A list keeps its full width whatever the room left in the content area: it is the area that
+   scrolls, never the list that gets squeezed — a squeezed slot lets the list overflow it, and the
+   controls end up drawn over the next list. */
+.column-slot {
+  flex: 0 0 auto;
+  width: min(calc(100vw - 48px), 280px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The list fills the height left above its move buttons */
+.column-slot app-kanban-column {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: none;
+}
+
+/* The two move buttons share the width of their list, under it: the gutter between two lists
+   stays empty, which is what makes them read as two separate cards. */
+.column-move {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+.btn-move {
+  flex: 1 1 0;
+  height: 48px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-move:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+  opacity: .35;
+  cursor: default;
+}
+
+/* ---- In-place field of a new list, in place of the add gesture (D-L18) ---- */
+.new-column {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 2px dashed var(--separator);
+  border-radius: var(--radius);
+}
+
+.new-column-name {
+  width: 48vw;
+  max-width: 200px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  font-family: inherit;
+}
+
+/* Sized for a thumb, and drawn as buttons: a bare glyph of 36px is both hard to see and hard to
+   hit on a phone, as the move buttons were. */
+.btn-column-action {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-add-confirm { color: var(--accent); }
+
+/* ---- The add gesture, at the far right of the lists ---- */
+.btn-add-column {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 44px;
+  height: 44px;
+  border: 2px dashed var(--separator);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 /* ---- SVG icons (drawn as masks, so the colour follows the text), as on the list ---- */
@@ -273,12 +382,6 @@
   background-color: currentColor;
   -webkit-mask: var(--icon) center / contain no-repeat;
   mask: var(--icon) center / contain no-repeat;
-}
-
-.ghost-column .icon {
-  width: 40px;
-  height: 40px;
-  opacity: .4;
 }
 
 .icon-kanban { --icon: url("/icons/kanban.svg"); }
