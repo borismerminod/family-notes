@@ -7,6 +7,9 @@
    masks, the way the board list does it — no icon font is loaded.
    ============================================================ */
 
+/* The width and the height of a list are the business of whoever places it — '.column-slot' of
+   kanban-editor.css, which alone knows the content area it scrolls in. Nothing here sizes the
+   host, so a change of width has one single place to happen. */
 :host {
   /* Palette (aligned on NOTE_COLOR_PALETTE / block-style.model.ts) */
   --surface: #ffffff;
@@ -19,8 +22,6 @@
   --radius: 16px;
 
   display: block;
-  flex: 0 0 72vw;
-  max-width: 280px;
   color: var(--text);
 }
 

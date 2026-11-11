@@ -259,23 +259,12 @@
   opacity: .4;
 }
 
-/* ---- One list and its two move buttons, which the editor renders around it (D-L23) ---- */
-/* 'min-width: max-content' is what keeps a list at its full width whatever the room left in the
-   content area: without it the slot is squeezed by the ones that do not fit, the list inside
-   overflows it, and the move buttons end up drawn over the next list. */
-.column-slot {
-  flex: 0 0 auto;
-  min-width: max-content;
-  display: flex;
-  align-items: stretch;
-  gap: 6px;
-}
-
 /* ---- One list and its two move buttons, which the editor renders under it (D-L23) ---- */
 
-/* A list keeps its full width whatever the room left in the content area: it is the area that
+/* A list keeps its own width whatever the room left in the content area: it is the area that
    scrolls, never the list that gets squeezed — a squeezed slot lets the list overflow it, and the
-   controls end up drawn over the next list. */
+   controls end up drawn over the next list. The width is fixed here and here only: a long name is
+   ellipsized by the list header rather than stretching its slot. */
 .column-slot {
   flex: 0 0 auto;
   width: min(calc(100vw - 48px), 280px);
@@ -288,7 +277,6 @@
 .column-slot app-kanban-column {
   flex: 1 1 auto;
   min-height: 0;
-  max-width: none;
 }
 
 /* The two move buttons share the width of their list, under it: the gutter between two lists

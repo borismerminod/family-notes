@@ -43,10 +43,10 @@ import { Kanban, KanbanColumn, KanbanSaveResult } from '../core/models';
  *   prochain lot* », which `T6.2 (listes)` and `T6.3 (listes)` replace by the empty state. They
  *   are therefore dropped rather than kept red forever.
  *
- * Proposed DOM contract of the columns, pending confirmation — the plan's own contract section is
- * still to be written (§8 of the plan), so the selectors below extend the conventions of the
- * delivered screens (`kanban-editor.html`, `kanban-column.html`, `confirm-dialog.html`) and the
- * template must honour them:
+ * DOM contract of the columns — **§9.1 of the plan**, which these selectors are the copy of. They
+ * were proposed here first, the plan's contract section being unwritten when this file was built,
+ * and were raised into it on 2026-11-11 (`R8` of `REVUE_KANBAN_EDITION_LISTES.md`): the plan is
+ * what makes them a contract now, this table is the reminder. The template must honour them:
  *
  * | Selector | Role | Cases |
  * |---|---|---|
@@ -57,9 +57,11 @@ import { Kanban, KanbanColumn, KanbanSaveResult } from '../core/models';
  * | `.btn-add-column` | The add gesture, visible including on an empty board | T6.2, T6.3, T7.x |
  * | `.new-column-name` | In-place name field of the column being added (`input[type="text"]`, `D-L18`) | T7.x |
  * | `.btn-add-confirm` / `.btn-add-cancel` | Validates / gives up the add field | T7.x |
- * | `.confirm-message` | Message of the removal popup, which names the column at stake (`D-L4`) | T9.1 |
+ * | `app-confirm-dialog.confirm-remove-column` | The removal popup (`D-L4`), which names the column at stake | T9.x, T12.3, T12.7 |
+ * | `app-confirm-dialog.confirm-leave` | The abandon popup of an unsaved name or composition (`US7`) | T9.x of the previous plan, T12.5 to T12.13 |
  *
- * Decisions taken here for lack of a plan contract, to confirm:
+ * Decisions taken here for lack of a plan contract, and since confirmed — they are **§8.1 of the
+ * plan** (`D-EL1` → `D-EL8`), raised into it on 2026-11-11:
  * - **D-EL1** — the move buttons are **disabled and not hidden** at the ends, as `E37` words it,
  *   and there is one pair **per column** whatever its rank: a case reads the pair of rank `i` as
  *   belonging to the column of rank `i`.
@@ -71,6 +73,11 @@ import { Kanban, KanbanColumn, KanbanSaveResult } from '../core/models';
  * - **D-EL4** — the removal popup is only required to **name** the column, between the quotes the
  *   other deletion popups of the repository use (`Supprimer le tableau « … » ?`): the wording of
  *   the sentence is left to the template.
+ * - **D-EL8** — the **two** `ConfirmDialog` instances of the screen are told apart by a class of
+ *   their own (`R5` of `REVUE_KANBAN_EDITION_LISTES.md`, closing what §4 of the approach asked
+ *   for), and every case says which popup it drives. Relying on « whichever popup is open » used
+ *   to work only because the screen never opens both at once — which nothing enforces — and it
+ *   silently sent two cases of group 12 at the removal popup through the abandon selector.
  * - **D-EL5** — the identifiers and the positions of the columns are **not displayed**, so the
  *   cases that bear on them (a fresh identifier, contiguous positions) read the composition the
  *   grouped save carries. It is the public API of the screen's single dependency, which is where
@@ -123,6 +130,18 @@ const COLUMN_SHOPPING_B: KanbanColumn = { id: 'col-courses-b', name: 'Courses', 
 const HOMONYM_COLUMNS: KanbanColumn[] = [COLUMN_SHOPPING_A, COLUMN_SHOPPING_B, COLUMN_DONE];
 
 /**
+ * Composition stored with a **hole** in its positions — `0` then `2`, no `1`. The database is
+ * allowed to hold that: a save is not atomic (`D-L13`), so one interrupted halfway can leave the
+ * columns of a board renumbered in part. Nothing forbids it either, no uniqueness constraint
+ * bearing on `(kanban_id, position)` (`D-L6`). The screen must therefore not take the positions
+ * it reads for granted.
+ */
+const COLUMNS_WITH_POSITION_HOLE: KanbanColumn[] = [
+  { id: 'col-a-faire', name: 'À faire', position: 0 },
+  { id: 'col-fait', name: 'Fait', position: 2 },
+];
+
+/**
  * Name a column is stored under when the typed name is empty or made of spaces (`D-L17`). It
  * reads the same as the fallback of the board name, and that is the point: the rule lives in one
  * single place, the editor.
@@ -164,10 +183,21 @@ const BOARD_NOT_FOUND_MESSAGE = 'Tableau introuvable.';
 const LOAD_FAILED_MESSAGE = 'Impossible de charger ce tableau.';
 
 /**
- * Message of the banner shown when the save was refused (`D2`, `D-E9`). The screen must show it,
- * not merely log it: a message left in the console alone never reaches the user.
+ * Message of the banner shown when the save was refused and wrote **nothing** (`D2`, `D-E9`). The
+ * screen must show it, not merely log it: a message left in the console alone never reaches the
+ * user.
  */
 const SAVE_FAILED_MESSAGE = "Impossible d'enregistrer le tableau.";
+
+/**
+ * Message of the banner shown when the board **was** stored but its lists did not follow
+ * (`D-L24`). A distinct message from the one above, decided by `R4` of
+ * `REVUE_KANBAN_EDITION_LISTES.md`: the board does exist, so announcing that it could not be saved
+ * would say the opposite of what happened — and the screen title, which switches to « Modifier le
+ * tableau » on that very path (`T11.6`), would contradict the banner.
+ */
+const COLUMNS_SAVE_FAILED_MESSAGE =
+  'Le tableau est enregistré, mais pas ses listes. Réessayez pour les enregistrer.';
 
 /** Warning of the popup shown when leaving would lose the typed name (`D2`). */
 const DISCARD_CHANGES_MESSAGE = 'Vos modifications ne seront pas enregistrées. Quitter ce tableau ?';
@@ -719,7 +749,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       const backToListShown = isShown('.not-found .btn-back-to-list');
       const requestedNavigations = navigations();
       const loadErrorShown = isShown('.error-state');
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
       const fieldShown = isShown('.editor-name');
       const saveShown = isShown('.btn-save');
 
@@ -785,7 +815,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.error-state .btn-back-to-list');
 
       const navigationsAfterClick = navigations();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
 
       expect(navigationsBeforeClick).toEqual([]);
       expect(navigationsAfterClick).toEqual([KANBAN_LIST_ROUTE]);
@@ -1198,7 +1228,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.btn-back');
 
       const navigationsAfterBack = navigations();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
 
       expect(navigationsBeforeBack).toEqual([]);
       expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
@@ -1216,7 +1246,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.btn-back');
 
       const navigationsAfterBack = navigations();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
 
       expect(valueBeforeBack).toBe(EXISTING_KANBAN.name);
       expect(navigationsBeforeBack).toEqual([]);
@@ -1237,7 +1267,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.btn-back');
 
       const navigationsAfterBack = navigations();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
 
       expect(navigationsBeforeBack).toEqual([]);
       expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE]);
@@ -1258,7 +1288,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.btn-back');
 
       const navigationsAfterBack = navigations();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
 
       expect(valueBeforeBack).toBe(paddedName);
       expect(navigationsBeforeBack).toEqual([]);
@@ -1298,10 +1328,10 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await typeName(typedName);
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
-      const confirmLabel = normalizedTextOf('.confirm-card .btn-confirm');
-      const cancelLabel = normalizedTextOf('.confirm-card .btn-cancel');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
+      const confirmLabel = normalizedTextOf('.confirm-leave .confirm-card .btn-confirm');
+      const cancelLabel = normalizedTextOf('.confirm-leave .confirm-card .btn-cancel');
       const requestedNavigations = navigations();
       const writesWhileWaiting = writeCalls();
 
@@ -1321,11 +1351,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await typeName(typedName);
       await clickOn('.btn-back');
 
-      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+      const confirmPopupBeforeAnswer = isShown('.confirm-leave .confirm-backdrop');
 
-      await clickOn('.confirm-card .btn-cancel');
+      await clickOn('.confirm-leave .confirm-card .btn-cancel');
 
-      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const confirmPopupAfterAnswer = isShown('.confirm-leave .confirm-backdrop');
       const editorStillShown = isShown('.kanban-editor');
       const fieldAfterAnswer = nameInput();
       const valueAfterAnswer = fieldAfterAnswer?.value;
@@ -1348,11 +1378,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await typeName(typedName);
       await clickOn('.btn-back');
 
-      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+      const confirmPopupBeforeAnswer = isShown('.confirm-leave .confirm-backdrop');
 
-      await clickOn('.confirm-backdrop');
+      await clickOn('.confirm-leave .confirm-backdrop');
 
-      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const confirmPopupAfterAnswer = isShown('.confirm-leave .confirm-backdrop');
       const editorStillShown = isShown('.kanban-editor');
       const fieldAfterAnswer = nameInput();
       const valueAfterAnswer = fieldAfterAnswer?.value;
@@ -1375,11 +1405,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await typeName(typedName);
       await clickOn('.btn-back');
 
-      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+      const confirmPopupBeforeAnswer = isShown('.confirm-leave .confirm-backdrop');
 
       await pressEscape();
 
-      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const confirmPopupAfterAnswer = isShown('.confirm-leave .confirm-backdrop');
       const editorStillShown = isShown('.kanban-editor');
       const fieldAfterAnswer = nameInput();
       const valueAfterAnswer = fieldAfterAnswer?.value;
@@ -1404,7 +1434,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
 
       const navigationsBeforeAnswer = navigations();
 
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-leave .confirm-card .btn-confirm');
 
       const navigationsAfterAnswer = navigations();
       const writesOnDiscard = writeCalls();
@@ -1434,7 +1464,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
 
       await clickOn('.btn-back');
 
-      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const confirmPopupAfterBack = isShown('.confirm-leave .confirm-backdrop');
       const navigationsAfterBack = navigations();
 
       expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
@@ -1458,7 +1488,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
 
       await clickOn('.btn-back');
 
-      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const confirmPopupAfterBack = isShown('.confirm-leave .confirm-backdrop');
       const navigationsAfterBack = navigations();
 
       expect(bannerAfterFailure).toBe(true);
@@ -1475,8 +1505,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await typeName(typedName);
       await clickOn('.btn-back');
 
-      const confirmPopupAfterBack = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupAfterBack = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
       const writesWhileWaiting = writeCalls();
 
@@ -1701,7 +1731,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.btn-back');
 
       const displayedNames = columnNamesShown();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
       const requestedNavigations = navigations();
 
       expect(displayedNames).toEqual([COLUMN_TO_DO.name, COLUMN_IN_PROGRESS.name, COLUMN_DONE.name]);
@@ -1799,7 +1829,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await clickOn('.btn-back');
 
       const displayedNames = columnNamesShown();
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
       const requestedNavigations = navigations();
 
       expect(displayedNames).toEqual([COLUMN_TO_DO.name, COLUMN_IN_PROGRESS.name, COLUMN_DONE.name]);
@@ -1816,8 +1846,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await requestRemovalOfColumnAt(1);
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-remove-column .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-remove-column .confirm-message');
       const displayedNames = columnNamesShown();
       const writesWhileWaiting = writeCalls();
 
@@ -1831,10 +1861,10 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     it('T9.2 (listes) retire la liste confirmée, et elle seule', async () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await requestRemovalOfColumnAt(1);
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-remove-column .confirm-card .btn-confirm');
 
       const displayedNames = columnNamesShown();
-      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const confirmPopupAfterAnswer = isShown('.confirm-remove-column .confirm-backdrop');
 
       expect(displayedNames).toEqual([COLUMN_TO_DO.name, COLUMN_DONE.name]);
       expect(confirmPopupAfterAnswer).toBe(false);
@@ -1843,7 +1873,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     it('T9.3 (listes) retire la bonne des deux listes homonymes', async () => {
       await openBoardWithColumns(HOMONYM_COLUMNS);
       await requestRemovalOfColumnAt(1);
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-remove-column .confirm-card .btn-confirm');
       await clickOn('.btn-save');
 
       const displayedNames = columnNamesShown();
@@ -1857,7 +1887,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     it("T9.4 (listes) ramène le tableau à son état vide quand sa dernière liste est retirée", async () => {
       await openBoardWithColumns([COLUMN_TO_DO]);
       await requestRemovalOfColumnAt(0);
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-remove-column .confirm-card .btn-confirm');
 
       const renderedPanels = columnPanels();
       const emptyStateShown = isShown('.board-canvas .no-columns');
@@ -1872,12 +1902,12 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await requestRemovalOfColumnAt(1);
 
-      const confirmPopupBeforeAnswer = isShown('.confirm-backdrop');
+      const confirmPopupBeforeAnswer = isShown('.confirm-remove-column .confirm-backdrop');
 
-      await clickOn('.confirm-card .btn-cancel');
+      await clickOn('.confirm-remove-column .confirm-card .btn-cancel');
 
       const displayedNames = columnNamesShown();
-      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const confirmPopupAfterAnswer = isShown('.confirm-remove-column .confirm-backdrop');
 
       expect(confirmPopupBeforeAnswer).toBe(true);
       expect(displayedNames).toEqual([COLUMN_TO_DO.name, COLUMN_IN_PROGRESS.name, COLUMN_DONE.name]);
@@ -1887,7 +1917,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     it("T9.6 (listes) laisse les positions contiguës après le retrait d'une liste du milieu", async () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await requestRemovalOfColumnAt(1);
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-remove-column .confirm-card .btn-confirm');
       await clickOn('.btn-save');
 
       const savedOutline = lastSavedOutline();
@@ -1942,6 +1972,22 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
         { name: COLUMN_IN_PROGRESS.name, position: 1 },
         { name: COLUMN_DONE.name, position: 2 },
         { name: addedName, position: 3 },
+      ]);
+    });
+
+    it('T10.4 (listes) enregistre contiguë une composition lue avec un trou dans les positions', async () => {
+      const addedName = 'Imprévus';
+
+      await openBoardWithColumns(COLUMNS_WITH_POSITION_HOLE);
+      await addColumn(addedName);
+      await clickOn('.btn-save');
+
+      const savedOutline = lastSavedOutline();
+
+      expect(savedOutline).toEqual([
+        { name: 'À faire', position: 0 },
+        { name: 'Fait', position: 1 },
+        { name: addedName, position: 2 },
       ]);
     });
   });
@@ -2090,7 +2136,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       const requestedNavigations = navigations();
 
       expect(screenTitle).toBe(EDITION_SCREEN_TITLE);
-      expect(bannerText).toContain(SAVE_FAILED_MESSAGE);
+      expect(bannerText).toContain(COLUMNS_SAVE_FAILED_MESSAGE);
       expect(displayedNames).toEqual([addedName]);
       expect(requestedNavigations).toEqual([]);
     });
@@ -2130,7 +2176,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
 
       await clickOn('.btn-back');
 
-      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const confirmPopupAfterBack = isShown('.confirm-leave .confirm-backdrop');
       const navigationsAfterBack = navigations();
 
       expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
@@ -2153,7 +2199,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       const displayedNames = columnNamesShown();
       const fieldAfterSave = nameInput();
       const valueAfterSave = fieldAfterSave?.value;
-      const confirmPopupAfterBack = isShown('.confirm-backdrop');
+      const confirmPopupAfterBack = isShown('.confirm-leave .confirm-backdrop');
       const navigationsAfterBack = navigations();
 
       expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
@@ -2191,7 +2237,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     it("T12.3 (listes) ne demande aucune écriture lors d'un retrait", async () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await requestRemovalOfColumnAt(1);
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-remove-column .confirm-card .btn-confirm');
 
       const displayedNames = columnNamesShown();
       const writesOnGesture = writeCalls();
@@ -2216,8 +2262,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await addColumn('Imprévus');
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
 
       expect(confirmPopupShown).toBe(true);
@@ -2230,8 +2276,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await renameColumnAt(1, 'En cours de test');
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
 
       expect(confirmPopupShown).toBe(true);
@@ -2242,11 +2288,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     it("T12.7 (listes) rend une modification « en attente » après un retrait", async () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await requestRemovalOfColumnAt(1);
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-remove-column .confirm-card .btn-confirm');
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
 
       expect(confirmPopupShown).toBe(true);
@@ -2259,8 +2305,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await moveColumnAt(1, 'left');
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
 
       expect(confirmPopupShown).toBe(true);
@@ -2272,7 +2318,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
       const requestedNavigations = navigations();
 
       expect(confirmPopupShown).toBe(false);
@@ -2286,8 +2332,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await typeName(typedName);
       await clickOn('.btn-back');
 
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
 
       expect(confirmPopupShown).toBe(true);
@@ -2302,8 +2348,8 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
 
       const fieldBeforeBack = nameInput();
       const valueBeforeBack = fieldBeforeBack?.value;
-      const confirmPopupShown = isShown('.confirm-backdrop');
-      const confirmMessage = normalizedTextOf('.confirm-message');
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
       const requestedNavigations = navigations();
 
       expect(valueBeforeBack).toBe(EXISTING_KANBAN.name);
@@ -2316,7 +2362,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await addColumn('Imprévus');
       await clickOn('.btn-back');
-      await clickOn('.confirm-card .btn-confirm');
+      await clickOn('.confirm-leave .confirm-card .btn-confirm');
 
       const requestedNavigations = navigations();
       const writesOnDiscard = writeCalls();
@@ -2332,16 +2378,16 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       await openBoardWithColumns(THREE_COLUMNS);
       await addColumn(addedName);
       await clickOn('.btn-back');
-      await clickOn('.confirm-card .btn-cancel');
+      await clickOn('.confirm-leave .confirm-card .btn-cancel');
 
       const editorStillShown = isShown('.kanban-editor');
       const displayedNames = columnNamesShown();
-      const confirmPopupAfterAnswer = isShown('.confirm-backdrop');
+      const confirmPopupAfterAnswer = isShown('.confirm-leave .confirm-backdrop');
       const navigationsAfterAnswer = navigations();
 
       await clickOn('.btn-back');
 
-      const confirmPopupOnSecondBack = isShown('.confirm-backdrop');
+      const confirmPopupOnSecondBack = isShown('.confirm-leave .confirm-backdrop');
 
       expect(editorStillShown).toBe(true);
       expect(displayedNames).toEqual([

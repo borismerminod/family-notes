@@ -167,8 +167,10 @@
 
   <!-- Removing a list: the very popup the deletions use, naming the list at stake (D-L4). It is
        a second instance, with its own open state: the question and what follows it differ from
-       those of the abandon popup below. -->
+       those of the abandon popup below. Each instance carries a class that tells it apart, so a
+       case — and a future style — can aim at one popup rather than at whichever is open. -->
   <app-confirm-dialog
+    class="confirm-remove-column"
     [message]="'Retirer la liste « ' + (columnToRemove()?.name ?? '') + ' » ?'"
     [(open)]="removeConfirmOpen"
     confirmLabel="Retirer"
@@ -176,8 +178,9 @@
     (answered)="onRemoveConfirmed($event)"
   />
 
-  <!-- Giving up an unsaved name: the very popup the deletions use (US4, D2). -->
+  <!-- Giving up an unsaved name or composition: the very popup the deletions use (US4, D2). -->
   <app-confirm-dialog
+    class="confirm-leave"
     message="Vos modifications ne seront pas enregistrées. Quitter ce tableau ?"
     [(open)]="confirmOpen"
     confirmLabel="Quitter"

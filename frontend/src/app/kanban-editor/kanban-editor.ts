@@ -10,11 +10,21 @@ import { KanbanColumnPanel } from '../kanban-column/kanban-column';
 const DEFAULT_NAME = 'Sans titre';
 
 /**
- * Banner shown when the save did not go all the way through — the board itself refused, or its
- * lists did not follow it (D-E9, D-L24). The user must see it: a message left in the console
- * alone never reaches them.
+ * Banner shown when the save wrote **nothing at all** — the board itself was refused (D-E9). The
+ * user must see it: a message left in the console alone never reaches them.
  */
 const SAVE_FAILED_MESSAGE = "Impossible d'enregistrer le tableau.";
+
+/**
+ * Banner shown when the board **was** stored but its lists did not follow (D-L24). It is a
+ * different message from {@link SAVE_FAILED_MESSAGE} on purpose: telling the user the board could
+ * not be saved would be the opposite of what happened, and the title of the navigation bar — which
+ * switches to « Modifier le tableau » the moment the board exists (D-L13) — would contradict it.
+ * What the banner has to say is the true state and what to do about it: the composition is intact
+ * on screen, and saving again replays it whole, that replay being idempotent (D-L10).
+ */
+const COLUMNS_SAVE_FAILED_MESSAGE =
+  'Le tableau est enregistré, mais pas ses listes. Réessayez pour les enregistrer.';
 
 /**
  * Board edit screen, served by the `/kanban/new` and `/kanban/edit/:id` routes (see
@@ -179,9 +189,10 @@ export class KanbanEditor implements OnInit {
    * navigation bar reads « Modifier le tableau », because the board does exist now.
    *
    * A save whose **lists did not follow** the board is not an exception but a result (D-L24): the
-   * user stays here with their composition and a visible banner, the starting points are left
-   * untouched so the change stays pending, and a retry replays the whole composition — which is
-   * idempotent, hence converges (D-L10).
+   * user stays here with their composition and a visible banner — its own banner, which says the
+   * board is stored and the lists are not, and not the one of a save that wrote nothing — the
+   * starting points are left untouched so the change stays pending, and a retry replays the whole
+   * composition, which is idempotent, hence converges (D-L10).
    *
    * The **displayed** name is set to the stored one as well, and that is not redundant: a user who
    * saved an empty field stored 'Sans titre' (D-E2), so leaving the field empty would leave it
@@ -200,7 +211,7 @@ export class KanbanEditor implements OnInit {
       this.kanbanId.set(savedKanban.id);
 
       if (!saveResult.columnsSaved) {
-        this.saveError.set(SAVE_FAILED_MESSAGE);
+        this.saveError.set(COLUMNS_SAVE_FAILED_MESSAGE);
         return;
       }
 
@@ -232,6 +243,11 @@ export class KanbanEditor implements OnInit {
    * The name is the typed one cleaned up by {@link nameToStore}: that rule is applied at the
    * **validation** of the field, never while typing (D-L17).
    *
+   * The positions are renumbered like after a removal or a move (D-L12), rather than the new list
+   * being given the number of lists as its rank: a composition read from a database left with a
+   * hole in its positions by an interrupted save (D-L13) would otherwise get two lists at the
+   * same rank, and nothing in the schema objects to it (D-L6).
+   *
    * Nothing is written: the composition is from now on waiting to be saved (D-L1). The field is
    * emptied and left open, so several lists can be added in a row (US2).
    */
@@ -243,8 +259,9 @@ export class KanbanEditor implements OnInit {
       name: nameToStore,
       position: columnsShown.length,
     };
+    const renumberedColumns = this.reindexColumns([...columnsShown, columnToAdd]);
 
-    this.columns.set([...columnsShown, columnToAdd]);
+    this.columns.set(renumberedColumns);
     this.newColumnName.set('');
   }
 
@@ -380,6 +397,12 @@ export class KanbanEditor implements OnInit {
    * cannot be found and offers a way back to the list (D-E4, revised on 2026-10-11), on the model
    * of the note editor (D5). A read failure raises the error state instead, which offers a way to
    * try again as well, so the screen never stays stuck on its spinner.
+   *
+   * The positions that come back are renumbered from the display order (D-L12), which closes at
+   * the source the one case where the database may hand over a hole in them: a save interrupted
+   * halfway (D-L13). The order itself is the one the data source read, by ascending position; only
+   * the numbers are made contiguous again, and the comparison that tells a pending change apart
+   * ignores them (see {@link hasColumnChanges}), so nothing is reported as modified.
    * @param id The identifier of the board to read.
    * @returns A promise that resolves once the read attempt has completed (success or failure).
    */
@@ -396,7 +419,7 @@ export class KanbanEditor implements OnInit {
       }
       this.name.set(kanban.name);
       this.initialName.set(kanban.name);
-      const columnsRead = kanban.columns ?? [];
+      const columnsRead = this.reindexColumns(kanban.columns ?? []);
       this.columns.set(columnsRead);
       this.initialColumns.set(columnsRead);
     } catch (err) {

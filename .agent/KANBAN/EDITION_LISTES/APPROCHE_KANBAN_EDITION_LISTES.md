@@ -322,8 +322,11 @@ dans l'ordre, le tableau vide, l'erreur relancée — **jamais** la requête SQL
 
 **Cas limites :**
 - **plus aucune colonne** (la dernière vient d'être retirée) : la suppression des absentes porte
-  alors sur **toutes** les colonnes du tableau — à écrire comme un cas à part, `NOT IN ()` avec une
-  liste vide n'étant pas du SQL valide ;
+  alors sur **toutes** les colonnes du tableau — à écrire comme un cas à part. *(Corrigé le
+  2026-11-11, `R7` de `REVUE_KANBAN_EDITION_LISTES.md` : la version précédente de cette ligne
+  affirmait que `NOT IN ()` avec une liste vide « n'est pas du SQL valide ». C'est **faux** pour
+  SQLite, qui l'accepte — vérifié sur `sql.js`. Le cas à part reste justifié parce qu'il **dit
+  l'intention** et évite une requête dégénérée, pas parce que le SQL serait refusé.)* ;
 - **collision temporaire de positions** entre une colonne déplacée et une colonne encore présente
   mais promise à la suppression : sans effet, aucune contrainte d'unicité ne porte sur
   `(kanban_id, position)` (`D-L6`) ;

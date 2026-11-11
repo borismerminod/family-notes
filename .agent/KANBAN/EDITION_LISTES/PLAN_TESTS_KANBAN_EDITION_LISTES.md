@@ -1,6 +1,6 @@
 # Plan de test — Kanban : les listes (colonnes) d'un tableau
 
-> **Date :** 2026-11-06 · **Statut :** en construction — **effets et causes seulement**
+> **Date :** 2026-11-06 · **Statut :** **arrêté le 2026-11-11** — plan complet
 > **Démarche :** TDD **boîte noire**, cas déduits d'un diagramme **Cause-Effet** co-construit.
 > **SPEC :** `.agent/KANBAN/EDITION_LISTES/FEATURE_KANBAN_EDITION_LISTES.md` (US1 → US7)
 > **Approche :** `.agent/KANBAN/EDITION_LISTES/APPROCHE_KANBAN_EDITION_LISTES.md`
@@ -9,10 +9,13 @@
 > font foi (doublure de `DatabaseService` par l'injection, jamais du module sqlite ; assertions sur
 > les **données renvoyées**, jamais sur le texte SQL émis).
 
-**État d'avancement de ce document :** les **effets** (§2), les **causes** (§3), leur
+**État d'avancement de ce document :** complet. Les **effets** (§2), les **causes** (§3), leur
 **correspondance** (§4), les **49 diagrammes Cause-Effet** — un par effet, décidé le 2026-11-06
-(§5) — et les **93 cas de test** qui en sont déduits (§6) sont posés. Restent les **décisions
-`D#`**, les **doublures** et le **contrat DOM**, à écrire une fois les deux points du §7 tranchés.
+(§5) — et les **94 cas de test** qui en sont déduits (§6) sont posés, ainsi que les **décisions
+`D#`** (§8), le **contrat DOM** (§9) et les **doublures** (§10), remontés le 2026-11-11 des
+en-têtes des `.spec.ts` où ils avaient été pris faute d'être écrits ici (`R8` de
+[`REVUE_KANBAN_EDITION_LISTES.md`](REVUE_KANBAN_EDITION_LISTES.md)). Les points du §7 sont tous
+tranchés, celui qui restait — l'observabilité de `E15`/`E16`/`E19` — par `D-EL5`.
 
 ---
 
@@ -1950,6 +1953,7 @@ flowchart LR
 | **T10.1** | La colonne est échangée avec sa **voisine immédiate**, et non envoyée à l'extrémité | E45 | C45, C65 | US5 |
 | **T10.2** | Les positions sont **renumérotées** après le déplacement | E46 | C45 | US5 |
 | **T10.3** | Un ajout renumérote aussi les positions depuis l'index | E46 | C38 | US2 |
+| **T10.4** | Une composition **lue avec un trou** dans les positions est enregistrée **contiguë** *(ajouté le 2026-11-11, `R2`)* | E46 | C32, C38 | US2, US6 |
 
 **Groupe 11 — Enregistrer**
 
@@ -1985,9 +1989,13 @@ flowchart LR
 
 ### Compte et couverture
 
-**93 cas** : 17 pour `KanbanColumnService`, 15 pour `KanbanService`, 11 pour `KanbanColumnPanel`,
-50 pour `KanbanEditor`. Chaque effet `E11` → `E59` est porté par au moins un cas, et chaque chemin
+**94 cas** : 17 pour `KanbanColumnService`, 15 pour `KanbanService`, 11 pour `KanbanColumnPanel`,
+51 pour `KanbanEditor`. Chaque effet `E11` → `E59` est porté par au moins un cas, et chaque chemin
 de diagramme par exactement un.
+
+*Le compte était de **93** jusqu'au 2026-11-11 : `T10.4` a été ajouté par `R2` de la revue, un
+chemin que les diagrammes n'avaient pas vu — une composition **lue** peut porter des positions non
+contiguës, puisque `D-L13` autorise la base à rester dans un état intermédiaire.*
 
 **Ordre d'implémentation TDD suggéré** — il suit les dépendances des lots de l'approche :
 groupes **1 → 2** (`KanbanColumnService`), puis **3 → 4** (`KanbanService`), puis **5**
@@ -2004,12 +2012,12 @@ enregistrement, et enfin le groupe 12 qui ne se tient qu'une fois les quatre ges
 - ~~**Cloisonnement par tableau en *lecture***~~ — **tranché le 2026-11-06** : `E59` ajouté.
   `E16` ne couvrait que l'écriture ; le diagramme d'`E11` a rendu visible que `C12` n'alimentait
   rien côté lecture.
-- **Observabilité de `E15`, `E16` et `E19` (⚠️).** Une colonne **retirée** n'apparaît dans aucune
-  valeur de retour : l'observer demande soit d'asserter les **paramètres** passés à l'écriture (sans
-  son texte SQL — ce que `kanban-service.spec.ts` fait déjà pour le nombre d'appels et l'ordre
-  écriture → `persist`), soit de remplacer la doublure par une **fausse base qui stocke réellement
-  les lignes** et de relire après coup. La seconde colle mieux à la règle « asserter les données
-  renvoyées », mais c'est un outillage neuf. **À trancher avant les cas de test.**
+- ~~**Observabilité de `E15`, `E16` et `E19` (⚠️)**~~ — **tranchée le 2026-11-11** (`D-EL5`) : on
+  asserte les **paramètres** passés à l'écriture, jamais son texte SQL — ce que
+  `kanban-service.spec.ts` faisait déjà pour le nombre d'appels et l'ordre écriture → `persist`.
+  La **fausse base qui stocke réellement les lignes**, plus proche de la règle « asserter les
+  données renvoyées », a été écartée : c'est un outillage neuf, et les écritures de ce lot sont
+  déjà jouées sur un **vrai moteur** (`sql.js`) là où elles comptent — cascade, `CHECK`, upsert.
 - ~~**Trou dans l'approche découvert en construisant `E27`**~~ — **tranché le 2026-11-06** :
   `saveKanbanWithColumns` **ne jette pas** quand les colonnes échouent après le tableau ; elle
   renvoie un `KanbanSaveResult` — le tableau enregistré, identifiant compris, et un `columnsSaved`
@@ -2017,9 +2025,8 @@ enregistrement, et enfin le groupe 12 qui ne se tient qu'une fois les quatre ges
   emporté l'identifiant du tableau fraîchement créé, et `D-L13` / `E51` seraient devenus
   intenables. Répercuté dans l'approche : décision **`D-L24`**, diagramme de classes, lot `D`,
   fichiers créés et découpage.
-- **Découpage du plan.** Quatre cibles dans un seul document feront un plan volumineux. Un seul
-  **diagramme Cause-Effet** d'ensemble, puis deux ou trois documents de cas de test, reste la
-  proposition. **À trancher.**
+- ~~**Découpage du plan**~~ — **tranché par l'usage** : le plan est resté **un seul document**, un
+  diagramme par effet et les cas groupés à la suite. Volumineux, mais une seule adresse à citer.
 - **`C3`** mérite d'exister seule : c'est le seul moyen de prouver que le tri se fait sur
   `position` et non sur l'ordre d'insertion des lignes.
 - **`C52`** est la cause la plus intéressante du lot : elle seule révèle le doublon de tableau si
@@ -2030,7 +2037,89 @@ enregistrement, et enfin le groupe 12 qui ne se tient qu'une fois les quatre ges
 
 ---
 
-## 8. Suite
+## 8. Décisions `D#`
 
-Une fois cette liste arrêtée : **diagramme Cause-Effet** (Mermaid), puis décisions `D#`, cas de
-test `T#.x` groupés, doublures, contrat DOM et ordre d'implémentation TDD.
+> **Arrêtées le 2026-11-11** (`R8` de [`REVUE_KANBAN_EDITION_LISTES.md`](REVUE_KANBAN_EDITION_LISTES.md)).
+> Ces décisions ont toutes été **prises pendant l'écriture des tests**, faute d'avoir été posées
+> ici en temps voulu : elles vivaient dans les en-têtes JSDoc de `kanban-editor.spec.ts` (`D-EL1`
+> → `D-EL8`) et de `kanban-column.spec.ts` (`D-P1` → `D-P4`), au statut « proposé, à confirmer ».
+> Elles sont remontées ici, qui est leur place : le plan fait foi, le spec le traduit.
+
+### 8.1 L'écran (`KanbanEditor`)
+
+| # | Sujet | Décision |
+|---|-------|----------|
+| **D-EL1** | Boutons de déplacement | **Désactivés et non masqués** aux extrémités, comme `E37` le formule, et **une paire par colonne** quel que soit son rang : un cas lit la paire de rang `i` comme celle de la colonne de rang `i`. |
+| **D-EL2** | Validation de la saisie d'ajout | **Deux boutons** `✓` / `✗`, comme le renommage du panneau (`D-P1`) : le clavier est hors de portée sur un téléphone. |
+| **D-EL3** | Sort du champ d'ajout après validation | Les cas **ne le figent pas** : le lot `G` veut qu'il reste ouvert (plusieurs colonnes à la suite), et la doublure de test rouvre le champ si elle retrouve le bouton d'ajout — les deux gabarits passent. |
+| **D-EL4** | Message de la popup de retrait | La popup est seulement tenue de **nommer** la colonne, entre les guillemets des autres suppressions du dépôt (`Supprimer le tableau « … » ?`) ; la phrase elle-même est laissée au gabarit. |
+| **D-EL5** | Observabilité des identifiants et des positions | Ni l'un ni l'autre n'est **affiché** : les cas qui portent sur eux (identifiant neuf, positions contiguës) lisent la composition **portée par l'enregistrement groupé**, c'est-à-dire l'API publique de la seule dépendance de l'écran. **C'est la réponse au ⚠️ du §7** : on asserte les paramètres d'un appel, pas un texte SQL, et sans fausse base qui stockerait les lignes. |
+| **D-EL6** | Doublure d'enregistrement | Elle **fait écho** à ce qu'on lui donne : le tableau renvoyé porte le nom et la composition reçus, ce que `D-L24` promet en cas de succès. Un cas qui a besoin d'un échec, d'un demi-succès ou d'un identifiant créé la surcharge. |
+| **D-EL7** | Lecture d'un nom dans le DOM | **Trimé mais non normalisé** : les espaces intérieurs font partie d'un nom (`US2`), les écraser cacherait ce que `T7.3` vérifie. |
+| **D-EL8** | Les **deux** `ConfirmDialog` | Distinguées par une **classe propre** — `app-confirm-dialog.confirm-remove-column` et `app-confirm-dialog.confirm-leave` — et **chaque cas dit quelle popup il pilote**. *(Ajoutée le 2026-11-11, `R5` : c'est ce que le §4 de l'approche demandait. S'en remettre à « la popup ouverte » ne marchait que parce que l'écran n'en ouvre jamais deux à la fois — ce que rien ne garantit — et envoyait en silence deux cas du groupe 12 sur le sélecteur de l'abandon.)* |
+
+### 8.2 Le composant colonne (`KanbanColumnPanel`)
+
+| # | Sujet | Décision |
+|---|-------|----------|
+| **D-P1** | Validation du renommage | **Deux boutons** `✓` / `✗` dans l'en-tête tant que le champ est ouvert, pas le clavier : `Échap` est hors de portée d'un clavier logiciel Android, là où `ConfirmDialog` peut se le permettre sur un navigateur de bureau. |
+| **D-P2** | Nom affiché et champ de saisie | Ils se **relaient** : ouvrir le champ masque `.column-name`, ce que `T5.10` relit une fois le renommage abandonné. |
+| **D-P3** | Sorties du composant | `renamed` (le texte tapé) et `removeRequested` (rien), comme le diagramme de classes de l'approche les nomme : l'API publique d'un composant présentationnel, donc ce que ces tests écoutent. |
+| **D-P4** | « La zone des cartes est vide » | Lu comme **aucun élément enfant et aucun texte** : c'est l'ancrage du lot suivant, pas une légende à réécrire dès la première carte. |
+
+---
+
+## 9. Contrat DOM
+
+> **Arrêté le 2026-11-11** (`R8`). Le gabarit **doit** honorer ces sélecteurs ; un cas qui en
+> change un change le contrat, et se signale comme tel.
+
+### 9.1 `kanban-editor.html`
+
+| Sélecteur | Rôle | Cas |
+|---|---|---|
+| `.board-canvas` | Zone de contenu du tableau, défilable horizontalement | `T6.x` |
+| `app-kanban-column` | Un panneau par colonne, dans l'ordre d'affichage (`D-L21`) | `T6.1`, `T7.x` → `T12.x` |
+| `.board-canvas .no-columns` | État vide d'un tableau sans aucune colonne (bloc `.empty`, comme les autres états vides de l'écran) | `T6.2`, `T6.3`, `T9.4` |
+| `.btn-move-left` / `.btn-move-right` | Boutons de déplacement rendus par l'éditeur autour de chaque colonne (`D-L23`), une paire par colonne, dans le même ordre | `T6.4` → `T6.7`, `T10.x` |
+| `.btn-add-column` | Le geste d'ajout, visible y compris sur un tableau vide | `T6.2`, `T6.3`, `T7.x` |
+| `.new-column-name` | Champ de saisie sur place de la colonne en cours d'ajout (`input[type="text"]`, `D-L18`) | `T7.x` |
+| `.btn-add-confirm` / `.btn-add-cancel` | Valide / abandonne la saisie d'ajout (`D-EL2`) | `T7.x` |
+| `app-confirm-dialog.confirm-remove-column` | La popup de retrait (`D-L4`, `D-EL8`), qui nomme la colonne visée | `T9.x`, `T12.3`, `T12.7` |
+| `app-confirm-dialog.confirm-leave` | La popup d'abandon d'un nom ou d'une composition non enregistrés (`US7`, `D-EL8`) | `T12.5` → `T12.13`, et les `T9.x` du plan `EDITION` |
+| `.action-error[role="alert"]` | Bandeau d'échec d'enregistrement (`D-E9`) — **deux messages distincts** : rien d'écrit, ou tableau écrit sans ses listes (`R4`) | `T11.4`, `T11.6` |
+
+### 9.2 `kanban-column.html`
+
+| Sélecteur | Rôle | Cas |
+|---|---|---|
+| `.kanban-column` | Racine du panneau | `T5.11` |
+| `.column-header` | En-tête : le nom et la corbeille | — |
+| `.column-name` | Le nom affiché ; le toucher ouvre le champ de renommage | `T5.1`, `T5.2`, `T5.4`, `T5.10`, `T5.11` |
+| `.column-name-input` | Champ de renommage sur place (`input[type="text"]`), pré-rempli | `T5.4` → `T5.10` |
+| `.btn-rename-confirm` / `.btn-rename-cancel` | Valide / abandonne le renommage (`D-P1`) | `T5.6` → `T5.10` |
+| `.btn-remove-column` | La corbeille de cette colonne (`D-L23`) | `T5.11` |
+| `.column-cards` | Zone réservée aux cartes du lot suivant (`D-L21`, `D-P4`) | `T5.3` |
+
+---
+
+## 10. Doublures
+
+| Cible | Doublure | Pourquoi |
+|---|---|---|
+| `KanbanColumnService`, `KanbanService` | **`DatabaseService` par l'injection** (`{ provide: DatabaseService, useValue: { connect, persist } }`) | Jamais de `vi.mock` du module `@capacitor-community/sqlite` : il ne s'applique pas de façon fiable d'un fichier de spec à l'autre dans ce runner (mémoire projet `run-frontend-tests`). |
+| `KanbanService` | **`KanbanColumnService` par l'injection** | `getKanbanById` et `saveKanbanWithColumns` lui délèguent ; c'est la frontière à observer. ⚠️ Tout `TestBed` reconstruit en cours de spec doit **redonner les deux** doublures, sans quoi le vrai service s'instancie, sa connexion rejette, et la suite sort des `Unhandled Rejection` sous des totaux verts. |
+| `KanbanEditor` | **`KanbanService` doublé**, `Router.navigate` espionné, `ActivatedRoute` bouchonné (snapshot lu une fois, `D8`) | L'écran se teste seul. `ConfirmDialog` et `KanbanColumnPanel` restent **réels**, pilotés par le DOM : c'est ce qui garde ces cas en boîte noire. |
+| `KanbanColumnPanel` | **aucune** | Composant présentationnel : une colonne en entrée, ses émissions en sortie. |
+| Le SQL lui-même | **`sql.js`** (moteur de `jeep-sqlite`, déjà dans `node_modules`) | Ce que les bouchons ne voient pas : cascade, `CHECK`, upsert `ON CONFLICT(id)`, rejouabilité des scripts. Cf. §1, « hors périmètre », lot `A`. |
+
+---
+
+## 11. Suite
+
+Plan **complet** : effets, causes, correspondance, diagrammes, cas, décisions `D#`, contrat DOM et
+doublures. Les 93 cas du §6 — **94** depuis l'ajout de `T10.4` par `R2` de la revue — sont
+implémentés et verts.
+
+**Pour le lot « cartes »**, ce plan est la référence : le contrat DOM du §9 et les décisions du §8
+sont ce sur quoi il peut s'appuyer sans aller les chercher dans un fichier de test.

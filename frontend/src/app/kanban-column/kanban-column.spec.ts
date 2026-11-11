@@ -18,9 +18,10 @@ import { KanbanColumn } from '../core/models';
  * name cleaning, no fallback on « Sans titre », no confirmation popup and no deletion — those
  * live in `KanbanEditor`, in a single place.
  *
- * Proposed DOM contract, pending confirmation — the plan's own contract section is still to be
- * written (§8 of the plan), so the selectors below follow the conventions of the delivered
- * screens (`kanban-editor.html`, `confirm-dialog.html`) and the template must honour them:
+ * DOM contract — **§9.2 of the plan**, which these selectors are the copy of. They were proposed
+ * here first, the plan's contract section being unwritten when this file was built, and were
+ * raised into it on 2026-11-11 (`R8` of `REVUE_KANBAN_EDITION_LISTES.md`). The template must
+ * honour them:
  *
  * | Selector | Role | Cases |
  * |---|---|---|
@@ -33,7 +34,8 @@ import { KanbanColumn } from '../core/models';
  * | `.btn-remove-column` | The trash of this column (`D-L23`) | T5.11 |
  * | `.column-cards` | Area reserved for the cards of the next batch (`D-L21`) | T5.3 |
  *
- * Decisions taken here for lack of a plan contract, to confirm:
+ * Decisions taken here for lack of a plan contract, and since confirmed — they are **§8.2 of the
+ * plan** (`D-P1` → `D-P4`), raised into it on 2026-11-11:
  * - **D-P1** — the rename is validated and given up by **two buttons** `✓` / `✗` shown in the
  *   header while the field is open, and not by the keyboard: `Échap` is out of reach of an
  *   Android soft keyboard, whereas `ConfirmDialog` can afford it on a desktop browser.

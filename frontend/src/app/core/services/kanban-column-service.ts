@@ -47,10 +47,8 @@ export class KanbanColumnService extends SqliteService {
    * @returns A promise resolving to the saved composition, which is from then on the stored one.
    */
   async saveColumnsForKanban(kanbanId: string, columns: KanbanColumn[]): Promise<KanbanColumn[]> {
-    for (const column of columns) {
-      this.requireName(column.name);
-    }
-    return this.runQuery('Erreur lors de l\'enregistrement des colonnes du kanban', async () => {
+    return this.runQuery("Erreur lors de l'enregistrement des colonnes du kanban", async () => {
+      this.requireNameOfEveryColumn(columns);
       for (const column of columns) {
         await this.upsertColumn(kanbanId, column);
       }
@@ -101,8 +99,10 @@ export class KanbanColumnService extends SqliteService {
   /**
    * Removes every column of one board, the limit case of a composition emptied of its last column
    * (approche, lot C, « cas limites »). It is a statement of its own rather than a removal with an
-   * empty list of kept identifiers: the general form would read `NOT IN ()`, which several engines
-   * reject outright and which says nothing of the intent.
+   * empty list of kept identifiers: the general form would read `NOT IN ()`, which SQLite does
+   * accept — verified on `sql.js`, the engine of `jeep-sqlite` — but which reads as a degenerate
+   * query and says nothing of the intent. « This board keeps no column at all » is worth its own
+   * line.
    * @param kanbanId The identifier of the board whose columns are all removed.
    * @returns A promise that resolves once the board holds no column any more.
    */
@@ -111,12 +111,25 @@ export class KanbanColumnService extends SqliteService {
   }
 
   /**
+   * Checks the whole composition before the first write, so a name refused at the third column
+   * leaves the first two unwritten: a refused save writes nothing at all. It is the first step of
+   * the save rather than something done ahead of it, which is what puts the refusal inside
+   * {@link runQuery} and gets it journalised like any other failure — the caller turns this error
+   * into « the columns did not follow » (D-L24) and has nothing else to report it by.
+   * @param columns The composition about to be saved.
+   * @throws When one of the names is empty once trimmed.
+   */
+  private requireNameOfEveryColumn(columns: KanbanColumn[]): void {
+    for (const column of columns) {
+      this.requireName(column.name);
+    }
+  }
+
+  /**
    * Checks one name the way the form does, as a safety net for a caller that did not fall back to
-   * « Sans titre » itself (D-L17, D-E10). The whole composition is checked before the first write,
-   * so a name refused at the third column leaves the first two unwritten: a refused save writes
-   * nothing at all. Unlike its counterpart on the boards it returns nothing, because the cleaned
-   * name is not what gets stored — the composition is stored as the editor composed it, the
-   * cleaning having already happened there.
+   * « Sans titre » itself (D-L17, D-E10). Unlike its counterpart on the boards it returns nothing,
+   * because the cleaned name is not what gets stored — the composition is stored as the editor
+   * composed it, the cleaning having already happened there.
    * @param name The name carried by one column of the composition.
    * @throws When the name is empty once trimmed.
    */

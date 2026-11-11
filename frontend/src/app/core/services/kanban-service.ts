@@ -158,9 +158,12 @@ export class KanbanService extends SqliteService {
    * into the result the caller gets. A failure here is reported rather than thrown (D-L24): the
    * board is already stored, and an exception would carry away its identifier — the one of a board
    * that may have just been created — leaving the screen unable to switch to edit mode and a
-   * retry free to create a second board (D-L13). The underlying error is not lost, `runQuery`
-   * having logged it before it got here. The board then comes back without any `columns` field,
-   * which says « not loaded » (D-L7): what the database holds is precisely what is unknown.
+   * retry free to create a second board (D-L13). The board then comes back without any `columns`
+   * field, which says « not loaded » (D-L7): what the database holds is precisely what is unknown.
+   *
+   * The error is journalised here before being turned into a boolean, because a boolean is all
+   * that leaves this method: whatever the column service already logged on its own, this is the
+   * only place that knows the failure was swallowed rather than raised.
    * @param kanban The board as it is now stored, whose identifier the columns are written under.
    * @param columns The composition the screen shows.
    * @returns A promise resolving to the stored board and to whether its columns followed.
@@ -169,7 +172,8 @@ export class KanbanService extends SqliteService {
     try {
       const savedColumns = await this.columnService.saveColumnsForKanban(kanban.id, columns);
       return { kanban: { ...kanban, columns: savedColumns }, columnsSaved: true };
-    } catch {
+    } catch (err) {
+      console.error('Le kanban est enregistré, mais pas ses colonnes', err);
       return { kanban, columnsSaved: false };
     }
   }
