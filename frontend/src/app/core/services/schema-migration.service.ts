@@ -20,6 +20,8 @@ const SCRIPTS = {
   kanban: 'schema_kanban.sql',
   /** Table `kanban_columns` (les colonnes d'un tableau, « listes » côté interface). */
   kanbanColumns: 'schema_kanban_columns.sql',
+  /** Table `kanban_cards` (the cards of a column, referencing `kanban_columns` and `notes`). */
+  kanbanCards: 'schema_kanban_cards.sql',
 } as const;
 
 /**
@@ -44,10 +46,11 @@ const SCRIPTS = {
 })
 export class SchemaMigrationService {
   /**
-   * Amène la base au schéma courant : notes et catégories relationnelles, table `kanbans`, puis
-   * table `kanban_columns`. Les trois étapes sont **indépendantes** et jouées dans cet ordre —
-   * `kanban_columns` référence `kanbans`, qui doit donc exister avant elle — et chacune ne fait
-   * rien si ce qu'elle apporte est déjà en place.
+   * Amène la base au schéma courant : notes et catégories relationnelles, table `kanbans`, table
+   * `kanban_columns`, puis table `kanban_cards`. Les quatre étapes sont **indépendantes** et
+   * jouées dans cet ordre, qui est celui des dépendances — `kanban_columns` référence `kanbans`,
+   * et `kanban_cards` référence `kanban_columns` **et** `notes` — et chacune ne fait rien si ce
+   * qu'elle apporte est déjà en place.
    * @param db La connexion ouverte à migrer.
    * @returns Une promesse résolue à `true` si **au moins une** étape a modifié le schéma
    * (l'appelant doit alors flusher le store), `false` si la base était déjà à jour.
@@ -56,8 +59,14 @@ export class SchemaMigrationService {
     const relationalNotesCreated = await this.ensureRelationalNotes(db);
     const kanbanTableCreated = await this.ensureKanbanTable(db);
     const kanbanColumnsTableCreated = await this.ensureKanbanColumnsTable(db);
+    const kanbanCardsTableCreated = await this.ensureKanbanCardsTable(db);
 
-    return relationalNotesCreated || kanbanTableCreated || kanbanColumnsTableCreated;
+    return (
+      relationalNotesCreated ||
+      kanbanTableCreated ||
+      kanbanColumnsTableCreated ||
+      kanbanCardsTableCreated
+    );
   }
 
   /**
@@ -114,6 +123,20 @@ export class SchemaMigrationService {
    */
   protected async ensureKanbanColumnsTable(db: SQLiteDBConnection): Promise<boolean> {
     return this.createTableIfMissing(db, 'kanban_columns', SCRIPTS.kanbanColumns);
+  }
+
+  /**
+   * Step 4 — the cards of a column. It comes last because its script references
+   * `kanban_columns` **and** `notes`, which the earlier steps guarantee (D-C17). The binary seed
+   * is not regenerated for this batch either, so this step creates the table everywhere, fresh
+   * installs included. The two-level cascade `kanbans` → `kanban_columns` → `kanban_cards` and
+   * the `ON DELETE SET NULL` from `notes` need no extra work: `DatabaseService` already sets
+   * `PRAGMA foreign_keys = ON` outside any transaction (D-L14).
+   * @param db La connexion à migrer.
+   * @returns Une promesse résolue à `true` si la table a été créée.
+   */
+  protected async ensureKanbanCardsTable(db: SQLiteDBConnection): Promise<boolean> {
+    return this.createTableIfMissing(db, 'kanban_cards', SCRIPTS.kanbanCards);
   }
 
   /**

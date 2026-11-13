@@ -15,9 +15,14 @@ const LEGACY_NOTES_COLUMNS = columns('id', 'title', 'content', 'category', 'upda
 const MIGRATED_NOTES_COLUMNS = columns('id', 'title', 'content', 'category_id', 'updated_at');
 
 /** Tables a fully up-to-date database holds (one per migration step). */
-const EVERY_TABLE = ['categories', 'kanbans', 'kanban_columns'];
-/** What a fresh install gets from the binary seed, which carries no `kanban_columns` (D-L15). */
+const EVERY_TABLE = ['categories', 'kanbans', 'kanban_columns', 'kanban_cards'];
+/**
+ * What a fresh install gets from the binary seed, which carries neither `kanban_columns` nor
+ * `kanban_cards` (D-L15, D-C17).
+ */
 const SEEDED_TABLES = ['categories', 'kanbans'];
+/** A database installed before the cards batch: everything but the cards table (D-C17). */
+const TABLES_BEFORE_CARDS = ['categories', 'kanbans', 'kanban_columns'];
 
 describe('SchemaMigrationService', () => {
   let service: SchemaMigrationService;
@@ -63,7 +68,7 @@ describe('SchemaMigrationService', () => {
     expect(service).toBeTruthy();
   });
 
-  it('ne touche à rien quand les trois étapes sont déjà en place', async () => {
+  it('ne touche à rien quand les quatre étapes sont déjà en place', async () => {
     tablesInPlace(...EVERY_TABLE);
 
     await expect(service.migrate(connection())).resolves.toBe(false);
@@ -82,6 +87,7 @@ describe('SchemaMigrationService', () => {
       'migration_relational_categories.sql',
       'schema_kanban.sql',
       'schema_kanban_columns.sql',
+      'schema_kanban_cards.sql',
     ]);
   });
 
@@ -94,6 +100,7 @@ describe('SchemaMigrationService', () => {
       'schema_notes.sql',
       'schema_kanban.sql',
       'schema_kanban_columns.sql',
+      'schema_kanban_cards.sql',
     ]);
   });
 
@@ -106,6 +113,7 @@ describe('SchemaMigrationService', () => {
       'schema_categories.sql',
       'schema_kanban.sql',
       'schema_kanban_columns.sql',
+      'schema_kanban_cards.sql',
     ]);
   });
 
@@ -124,19 +132,31 @@ describe('SchemaMigrationService', () => {
 
     await expect(service.migrate(connection())).resolves.toBe(true);
 
-    expect(loadedScripts()).toEqual(['schema_kanban.sql', 'schema_kanban_columns.sql']);
+    expect(loadedScripts()).toEqual([
+      'schema_kanban.sql',
+      'schema_kanban_columns.sql',
+      'schema_kanban_cards.sql',
+    ]);
   });
 
-  it('crée la seule table des colonnes sur une installation neuve issue du seed', async () => {
+  it('crée les tables des colonnes et des cartes sur une installation neuve issue du seed', async () => {
     tablesInPlace(...SEEDED_TABLES);
 
     await expect(service.migrate(connection())).resolves.toBe(true);
 
-    expect(loadedScripts()).toEqual(['schema_kanban_columns.sql']);
+    expect(loadedScripts()).toEqual(['schema_kanban_columns.sql', 'schema_kanban_cards.sql']);
+  });
+
+  it('crée la seule table des cartes sur une base installée avant le lot cartes', async () => {
+    tablesInPlace(...TABLES_BEFORE_CARDS);
+
+    await expect(service.migrate(connection())).resolves.toBe(true);
+
+    expect(loadedScripts()).toEqual(['schema_kanban_cards.sql']);
   });
 
   it('ne rejoue pas une étape dont la table existe déjà', async () => {
-    tablesInPlace('kanbans', 'kanban_columns');
+    tablesInPlace('kanbans', 'kanban_columns', 'kanban_cards');
     db.query.mockResolvedValue(LEGACY_NOTES_COLUMNS);
 
     await expect(service.migrate(connection())).resolves.toBe(true);

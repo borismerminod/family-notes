@@ -9,4 +9,5 @@ export * from './block-style.model';
 export * from './category.model';
 export * from './kanban.model';
 export * from './kanban-column.model';
+export * from './kanban-card.model';
 export * from './kanban-save-result.model';

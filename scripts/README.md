@@ -1,6 +1,7 @@
 # Scripts de base de données
 
-Base SQLite `family_notes` (notes, catégories, événements, tableaux kanban et leurs colonnes).
+Base SQLite `family_notes` (notes, catégories, événements, tableaux kanban, leurs colonnes et
+leurs cartes).
 
 ## Où vit quoi
 
@@ -11,12 +12,14 @@ Base SQLite `family_notes` (notes, catégories, événements, tableaux kanban et
 | `frontend/public/assets/migrations/migration_relational_categories.sql` | Ancien format (`notes.category` en texte libre) → modèle relationnel |
 | `frontend/public/assets/migrations/schema_kanban.sql` | Table `kanbans` |
 | `frontend/public/assets/migrations/schema_kanban_columns.sql` | Table `kanban_columns` (les « listes » d'un tableau) |
+| `frontend/public/assets/migrations/schema_kanban_cards.sql` | Table `kanban_cards` (les cartes d'une liste) |
 | `scripts/schema_events.sql` | Table `events` |
-| `scripts/seed_categories.sql`, `scripts/seed_notes.sql`, `scripts/seed_kanbans.sql`, `scripts/seed_kanban_columns.sql`, `scripts/seeds_event.sql` | Jeux de données de démo |
+| `scripts/seed_categories.sql`, `scripts/seed_notes.sql`, `scripts/seed_kanbans.sql`, `scripts/seed_kanban_columns.sql`, `scripts/seed_kanban_cards.sql`, `scripts/seeds_event.sql` | Jeux de données de démo |
 | `scripts/migration_check.sql` | Vérification de la migration vers les catégories relationnelles |
 | `scripts/kanban_columns_check.sql` | Vérification de la table `kanban_columns` (schéma, cascade, positions) |
+| `scripts/kanban_cards_check.sql` | Vérification de la table `kanban_cards` (schéma, cascade, `SET NULL`, positions) |
 
-Les cinq premiers sont dans les **assets de l'application** parce qu'ils sont exécutés au
+Les six premiers sont dans les **assets de l'application** parce qu'ils sont exécutés au
 démarrage par `SchemaMigrationService`
 ([frontend/src/app/core/services/schema-migration.service.ts](../frontend/src/app/core/services/schema-migration.service.ts))
 — ce sont les mêmes fichiers que ceux joués à la main avec `sqlite3`, il n'existe pas de copie du
@@ -29,7 +32,7 @@ téléphone. Le seed livré (`frontend/public/assets/databases/family_notesSQLit
 qu'à la toute première installation — `copyFromAssets` ne remplace jamais une base existante. Une
 base déjà en place ne peut donc être mise à niveau que sur place, au démarrage.
 
-`SchemaMigrationService` enchaîne **trois étapes indépendantes**, chacune gardée par la présence
+`SchemaMigrationService` enchaîne **quatre étapes indépendantes**, chacune gardée par la présence
 de ce qu'elle apporte, et n'exécute que celles qui manquent. Aucune ne court-circuite les
 suivantes : c'est la correction apportée par le lot `KANBAN/EDITION_LISTES` (décision `D-L15`),
 l'ancien raccourci « table `categories` présente ⇒ base à jour » ayant empêché
@@ -43,6 +46,7 @@ l'ancien raccourci « table `categories` présente ⇒ base à jour » ayant emp
 | | | `notes` relationnelle sans catégories | `schema_categories.sql` (+ `ALTER TABLE` si besoin) |
 | 2 — tableaux kanban | table `kanbans` | absente | `schema_kanban.sql` |
 | 3 — colonnes des tableaux | table `kanban_columns` | absente | `schema_kanban_columns.sql` |
+| 4 — cartes des colonnes | table `kanban_cards` | absente | `schema_kanban_cards.sql` |
 
 ## Intégrité référentielle
 
@@ -53,11 +57,20 @@ défaut, et tant qu'elles le sont il **ignore en silence** les actions déclaré
 `ON DELETE SET NULL` de `notes.category_id` laisserait des notes pointant vers une catégorie
 disparue.
 
+La table `kanban_cards` ajoute un **deuxième étage** de cascade et un second `SET NULL`
+(`.agent/KANBAN/EDITION_CARTES/APPROCHE_KANBAN_EDITION_CARTES.md`, `D-C16`) :
+
+- `kanban_cards.column_id` en `ON DELETE CASCADE` — retirer une liste emporte ses cartes, et
+  supprimer un tableau nettoie donc les deux étages d'un coup ;
+- `kanban_cards.note_id` en `ON DELETE SET NULL` — supprimer une note ne doit **jamais** faire
+  disparaître du travail dans un tableau (`H-C6`) : la carte garde son texte, seule la référence
+  s'efface.
+
 Deux pièges tiennent à ce pragma :
 
 - il est **propre à la connexion** (il n'est pas stocké dans le fichier) — une session `sqlite3`
-  doit le poser elle-même, ce que font `scripts/kanban_columns_check.sql` et les exemples
-  ci-dessous ;
+  doit le poser elle-même, ce que font `scripts/kanban_columns_check.sql`,
+  `scripts/kanban_cards_check.sql` et les exemples ci-dessous ;
 - SQLite l'**ignore à l'intérieur d'une transaction**, et le plugin Capacitor enrobe `execute()`
   dans une transaction par défaut : le pragma est donc posé avec `transaction: false`. C'est aussi
   pourquoi les `PRAGMA foreign_keys = OFF` / `= ON` écrits dans
@@ -80,13 +93,16 @@ supposent leurs tables créées) :
 sqlite3 famille.db < frontend/public/assets/migrations/schema_notes.sql
 sqlite3 famille.db < frontend/public/assets/migrations/schema_kanban.sql
 sqlite3 famille.db < frontend/public/assets/migrations/schema_kanban_columns.sql
+sqlite3 famille.db < frontend/public/assets/migrations/schema_kanban_cards.sql
 sqlite3 famille.db < scripts/schema_events.sql
 sqlite3 famille.db < scripts/seed_categories.sql
 sqlite3 famille.db < scripts/seed_notes.sql
 sqlite3 famille.db < scripts/seed_kanbans.sql
 sqlite3 famille.db < scripts/seed_kanban_columns.sql
+sqlite3 famille.db < scripts/seed_kanban_cards.sql
 sqlite3 famille.db < scripts/seeds_event.sql
 sqlite3 famille.db < scripts/kanban_columns_check.sql
+sqlite3 famille.db < scripts/kanban_cards_check.sql
 ```
 
 Les builds natifs embarquent le seed et les scripts via `npx cap sync` : **tout ajout ou
