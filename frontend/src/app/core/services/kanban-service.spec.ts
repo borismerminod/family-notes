@@ -4,7 +4,7 @@ import { vi } from 'vitest';
 import { KanbanService } from './kanban-service';
 import { KanbanColumnService } from './kanban-column-service';
 import { DatabaseService } from './database.service';
-import { Kanban, KanbanColumn } from '../models';
+import { Kanban, KanbanCard, KanbanColumn } from '../models';
 
 /**
  * Expected shape of what a grouped save hands back (`D-L24`). Declared here rather than imported
@@ -72,6 +72,16 @@ const COLUMN_DONE: KanbanColumn = { id: 'col-done', name: 'Terminé', position: 
 const COLUMN_VALISES: KanbanColumn = { id: 'col-valises', name: 'Valises', position: 0 };
 
 /**
+ * The cards a stored column carries, as the column service hands them back once hydrated
+ * (`D-C5`). They hold no note: the hydration of a reference belongs to `KanbanCardService` and is
+ * asserted in its own spec (E63), whereas this spec only watches the cards ride along with their
+ * column up to the editor.
+ */
+const CARD_PAIN: KanbanCard = { id: 'card-pain', text: 'Acheter du pain', note: null, position: 0 };
+const CARD_LAIT: KanbanCard = { id: 'card-lait', text: 'Acheter du lait', note: null, position: 1 };
+const CARD_BEURRE: KanbanCard = { id: 'card-beurre', text: 'Acheter du beurre', note: null, position: 0 };
+
+/**
  * The composition each board holds, as the column service would hand it back — one entry per
  * board. Reset before each case and seeded by {@link givenStoredColumns}.
  */
@@ -84,6 +94,33 @@ let storedColumnsByKanban: Record<string, KanbanColumn[]> = {};
  */
 function givenStoredColumns(columnsByKanban: Record<string, KanbanColumn[]>): void {
   storedColumnsByKanban = { ...columnsByKanban };
+}
+
+/**
+ * Derives a column carrying the cards a case hands over, the base fixtures showing none.
+ * @param column The column to derive from.
+ * @param cards The cards that column carries, in the order it carries them.
+ * @returns A new column carrying those cards.
+ */
+function withCards(column: KanbanColumn, cards: KanbanCard[]): KanbanColumn {
+  return { ...column, cards };
+}
+
+/**
+ * Reads the identifiers of the cards one read column carries. The absence of cards is handed back
+ * as it is rather than smoothed into an empty list (`D-C4`): a case asserting an order would
+ * otherwise pass on a column whose cards were never loaded, which is exactly what T8.1 guards
+ * against.
+ * @param column One column of a read composition.
+ * @returns The identifiers of its cards in the order it carries them, or `undefined` when its
+ * cards are not loaded.
+ */
+function cardIdsOf(column: KanbanColumn): string[] | undefined {
+  const cardsOfColumn = column.cards;
+  if (cardsOfColumn === undefined) {
+    return undefined;
+  }
+  return cardsOfColumn.map((card) => card.id);
 }
 
 describe('KanbanService (accès SQLite)', () => {
@@ -426,6 +463,77 @@ describe('KanbanService (accès SQLite)', () => {
       expect(result.kanban.id).toBeTruthy();
       expect(attemptedOwnerId).toBe(result.kanban.id);
       expect(result.columnsSaved).toBe(false);
+    });
+  });
+
+  /**
+   * Groupe 8 — Le tableau et ses cartes (`.agent/KANBAN/EDITION_CARTES/PLAN_TESTS_KANBAN_CARTES.md`,
+   * §6.4). Covers E86 (the board comes back with its columns and their cards), E87 (`getAllKanbans`
+   * carries neither), E88 (a failing card write does not throw, `D-C13`) and E57 of the previous
+   * batch in non-regression (a failing card read is rethrown), serving US1, US9 and US10.
+   *
+   * The signature of the service is unchanged by the cards (`D-C6`): they reach it inside the
+   * columns the column service hands back, and leave inside the composition it hands down. So what
+   * these cases watch is the relay — that nothing on the way strips the cards off, and that a
+   * failure on them behaves exactly as a failure on the columns.
+   */
+  describe('Le tableau et ses cartes (plan EDITION_CARTES, groupe 8)', () => {
+    it('T8.1 renvoie le tableau avec ses colonnes et leurs cartes, en un seul appel', async () => {
+      const row = dbRow({ id: 'k-courses', name: 'Courses', updated_at: '2026-11-12 09:00:00' });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+      const todoColumn = withCards(COLUMN_TODO, [CARD_PAIN, CARD_LAIT]);
+      const doingColumn = withCards(COLUMN_DOING, [CARD_BEURRE]);
+      givenStoredColumns({ 'k-courses': [todoColumn, doingColumn] });
+
+      const kanban = await service.getKanbanById('k-courses');
+      const loadedColumns = kanban?.columns ?? [];
+      const columnIds = loadedColumns.map((column) => column.id);
+      const cardIdsByColumn = loadedColumns.map((column) => cardIdsOf(column));
+      const compositionReadCount = mocks.columnService.getColumnsByKanbanId.mock.calls.length;
+
+      expect(columnIds).toEqual(['col-todo', 'col-doing']);
+      expect(cardIdsByColumn).toEqual([['card-pain', 'card-lait'], ['card-beurre']]);
+      expect(compositionReadCount).toBe(1);
+    });
+
+    it('T8.2 renvoie les tableaux de la liste sans colonnes ni cartes, sans lire la moindre composition', async () => {
+      mocks.dbConnection.query.mockResolvedValue({ values: [ROW_RECENT, ROW_MIDDLE] });
+      const todoColumn = withCards(COLUMN_TODO, [CARD_PAIN, CARD_LAIT]);
+      const doingColumn = withCards(COLUMN_DOING, [CARD_BEURRE]);
+      givenStoredColumns({ 'k-recent': [todoColumn], 'k-middle': [doingColumn] });
+
+      const kanbans = await service.getAllKanbans();
+      const someBoardCarriesComposition = kanbans.some((kanban) => 'columns' in kanban);
+
+      expect(someBoardCarriesComposition).toBe(false);
+      expect(mocks.columnService.getColumnsByKanbanId).not.toHaveBeenCalled();
+    });
+
+    it('T8.3 renvoie le tableau enregistré avec « les colonnes n\'ont pas suivi » quand l\'écriture des cartes échoue', async () => {
+      const cardsWriteFailure = new Error('écriture des cartes impossible');
+      mocks.columnService.saveColumnsForKanban.mockRejectedValue(cardsWriteFailure);
+      const todoColumn = withCards(COLUMN_TODO, [CARD_PAIN, CARD_LAIT]);
+      const askedComposition = [todoColumn];
+
+      const result = await service.saveKanbanWithColumns('k-courses', 'Courses du samedi', askedComposition);
+      const columnSaveCall = mocks.columnService.saveColumnsForKanban.mock.calls[0];
+      const handedComposition = columnSaveCall[1];
+
+      expect(result.kanban.id).toBe('k-courses');
+      expect(result.kanban.name).toBe('Courses du samedi');
+      expect(result.columnsSaved).toBe(false);
+      expect(handedComposition).toEqual(askedComposition);
+    });
+
+    it('T8.4 relance l\'erreur de lecture des cartes au lieu de replier la colonne sur une pile vide', async () => {
+      const row = dbRow({ id: 'k-courses', name: 'Courses', updated_at: '2026-11-12 09:00:00' });
+      mocks.dbConnection.query.mockResolvedValue({ values: [row] });
+      const cardsReadFailure = new Error('lecture des cartes impossible');
+      mocks.columnService.getColumnsByKanbanId.mockRejectedValue(cardsReadFailure);
+
+      const read = service.getKanbanById('k-courses');
+
+      await expect(read).rejects.toThrow('lecture des cartes impossible');
     });
   });
 

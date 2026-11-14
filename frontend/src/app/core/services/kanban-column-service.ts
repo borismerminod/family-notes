@@ -1,5 +1,6 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { KanbanColumn } from '../models/kanban-column.model';
+import { KanbanCardService } from './kanban-card-service';
 import { SqliteService } from './sqlite-service';
 
 /**
@@ -13,6 +14,13 @@ import { SqliteService } from './sqlite-service';
   providedIn: 'root',
 })
 export class KanbanColumnService extends SqliteService {
+  /**
+   * Owner of the cards a column carries, which the read hydrates its columns from (D-C6). Reading
+   * `kanban_cards` belongs there — one service per table — so this service asks that one for the
+   * cards of a column instead of querying them itself.
+   */
+  private readonly cardService = inject(KanbanCardService);
+
   constructor() {
     super();
   }
@@ -22,9 +30,12 @@ export class KanbanColumnService extends SqliteService {
    * user composed, which carries the meaning of the workflow (US1, D-L12). The read is fenced to
    * the given board, so the columns of the other boards never come back. A board without any
    * column is not an anomaly but an answer: an empty array is returned.
+   *
+   * Every column comes back carrying the cards it holds, this being the method that serves the
+   * edit screen (D-C5): a board is never handed over as columns without their cards.
    * @param kanbanId The identifier of the board whose columns are read.
-   * @returns A promise resolving to the columns of the board, ordered by ascending position, or
-   * to an empty array when the board carries none.
+   * @returns A promise resolving to the columns of the board, ordered by ascending position and
+   * each carrying its cards, or to an empty array when the board carries none.
    */
   async getColumnsByKanbanId(kanbanId: string): Promise<KanbanColumn[]> {
     return this.runQuery('Erreur lors de la récupération des colonnes du kanban', async () => {
@@ -34,24 +45,73 @@ export class KanbanColumnService extends SqliteService {
       );
       const rows = res.values ?? [];
       const columns = rows.map((row: any) => this.mapRowToColumn(row));
-      return this.sortedByPosition(columns);
+      const orderedColumns = this.sortedByPosition(columns);
+      return this.withTheirCards(orderedColumns);
     });
   }
 
   /**
-   * Saves the composition of one board: every column it shows is written, so that reading the
-   * board back hands the same composition in the same order (US6, D-L10). The columns are written
-   * in the order received, then the store is flushed once, after the last write.
+   * Completes the read by hanging on every column the cards it carries, the hydration the cards
+   * bring one level down (D-C5): the screen opens a board and receives its composition whole,
+   * columns and cards together, rather than having to ask twice.
+   *
+   * It costs one query per column, an N+1 knowingly accepted at this scale — a few columns, a few
+   * dozen cards — because it is what keeps « one service per table » (D-C41).
+   * @param columns The columns of the board, already ordered.
+   * @returns A promise resolving to new columns, each carrying the cards it holds.
+   */
+  private async withTheirCards(columns: KanbanColumn[]): Promise<KanbanColumn[]> {
+    const hydratedColumns: KanbanColumn[] = [];
+    for (const column of columns) {
+      const hydratedColumn = await this.withItsCards(column);
+      hydratedColumns.push(hydratedColumn);
+    }
+    return hydratedColumns;
+  }
+
+  /**
+   * Hands back one column carrying its cards. A column holding none receives an empty list, never
+   * `undefined`: the distinction is load-bearing (D-C4) — « loaded, and it has none » is what a
+   * save may empty, whereas « cards not loaded » is what it must leave alone (D-C9).
+   * @param column The column to hydrate.
+   * @returns A promise resolving to a new column carrying the cards it holds.
+   */
+  private async withItsCards(column: KanbanColumn): Promise<KanbanColumn> {
+    const cardsOfColumn = await this.cardService.getCardsByColumnId(column.id);
+    return { ...column, cards: cardsOfColumn };
+  }
+
+  /**
+   * Saves the composition of one board: every column it shows and every card those columns show
+   * are written, so that reading the board back hands the same composition in the same order
+   * (US6, US9, D-L10).
+   *
+   * The whole composition is checked before the first write — the names of every column, then the
+   * texts of every card of every column (D-C12) — so that a text refused at the third card leaves
+   * neither a column nor a card written. Asking the cards service for that check is what makes it
+   * possible at all: the control queries nothing and is public for this one caller (D-C7).
+   *
+   * The four phases of a save then run at the scale of the board, and their order is what makes
+   * them work (D-C8): the columns are upserted first, so a card dropped into a column added by the
+   * same save finds its column already stored; then every card of every column, whichever column
+   * now carries it; then the cards a column no longer shows; and the columns the board no longer
+   * shows last of all, their cards leaving with them by cascade. Nothing is destroyed before the
+   * new state is in place, which is what lets a card moved out of a removed column survive it.
+   *
+   * The store is flushed once, after the last write (D-C11).
    * @param kanbanId The identifier of the board whose composition is saved.
-   * @param columns The columns the board shows, already carrying their position (D-L12).
+   * @param columns The columns the board shows, already carrying their position (D-L12) and the
+   * cards they show (D-C9).
    * @returns A promise resolving to the saved composition, which is from then on the stored one.
    */
   async saveColumnsForKanban(kanbanId: string, columns: KanbanColumn[]): Promise<KanbanColumn[]> {
     return this.runQuery("Erreur lors de l'enregistrement des colonnes du kanban", async () => {
       this.requireNameOfEveryColumn(columns);
+      this.cardService.assertCardsAreSavable(columns);
       for (const column of columns) {
         await this.upsertColumn(kanbanId, column);
       }
+      await this.cardService.saveCardsForColumns(columns);
       const keptColumnIds = columns.map((column) => column.id);
       await this.deleteColumnsAbsentFrom(kanbanId, keptColumnIds);
       await this.persist();

@@ -1,0 +1,71 @@
+<!-- Batch G in progress: the popup shows its frame, its own loading indicator, the notes it read by
+     their title and the way out that emits nothing (US4). The « Aucune note » choice, the filter by
+     title and the two empty states land with the groups 36 and 37 of the test plan. -->
+@if (open()) {
+  <div class="note-picker-backdrop" (click)="onBackdropClick($event)">
+    <div
+      class="note-picker-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="note-picker-title"
+    >
+      <p id="note-picker-title" class="note-picker-title">Lier une note</p>
+
+      <input
+        type="text"
+        class="note-picker-search"
+        [value]="search()"
+        (input)="search.set($any($event.target).value)"
+        placeholder="Rechercher une note…"
+        aria-label="Rechercher une note par son titre"
+      />
+
+      @if (isLoading()) {
+        <div class="note-picker-loading">
+          <div class="spinner"></div>
+        </div>
+      } @else if (loadError()) {
+        <p class="note-picker-error" role="alert">{{ loadFailedMessage }}</p>
+      } @else if (notes().length === 0) {
+        <!-- First empty state: the application holds no note at all, which the popup says instead
+             of opening a dead end of a list (US4). Linking a card to a note that does not exist
+             yet is out of this batch, so there is nothing to offer here but the explanation. -->
+        <div class="empty no-notes">
+          <p>Aucune note dans l'application.<br>Créez une note pour pouvoir la lier.</p>
+        </div>
+      } @else if (hasSearchWithoutMatch()) {
+        <!-- Second empty state, held apart from « aucune note dans l'application » by a selector
+             of its own: there are notes, the search just does not reach any (D-NP1). -->
+        <div class="empty no-notes-match">
+          <p>Aucune note ne correspond à la recherche.</p>
+        </div>
+      } @else {
+        <!-- A note is designated by its title, never by its identifier (E170). -->
+        <ul class="note-picker-list">
+          <!-- The unlink choice is an entry of the list like the others, first so as to be reached
+               without scrolling, and it carries no title since it stands for no note (D-C35,
+               D-NP3). -->
+          <li>
+            <button
+              type="button"
+              class="note-option note-option-none"
+              (click)="onNoNoteChosen()"
+            >
+              Aucune note
+            </button>
+          </li>
+
+          @for (note of filteredNotes(); track note.id) {
+            <li>
+              <button type="button" class="note-option" (click)="onNoteChosen(note)">
+                <span class="note-option-title">{{ note.title }}</span>
+              </button>
+            </li>
+          }
+        </ul>
+      }
+
+      <button type="button" class="btn-note-picker-close" (click)="onGiveUp()">Fermer</button>
+    </div>
+  </div>
+}

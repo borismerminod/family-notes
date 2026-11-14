@@ -1,10 +1,12 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
 
 import { KanbanEditor } from './kanban-editor';
 import { KanbanService } from '../core/services/kanban-service';
-import { Kanban, KanbanColumn, KanbanSaveResult } from '../core/models';
+import { NotesService } from '../core/services/notes-service';
+import { Kanban, KanbanCard, KanbanColumn, KanbanSaveResult, Note } from '../core/models';
 
 /**
  * @file kanban-editor.spec.ts
@@ -88,6 +90,94 @@ import { Kanban, KanbanColumn, KanbanSaveResult } from '../core/models';
  * - **D-EL7** — a column name is read from the DOM **trimmed but not normalized**: inner spaces
  *   are part of a name (`US2`), so collapsing runs of spaces would hide what `T7.3 (listes)`
  *   checks.
+ *
+ * ---
+ *
+ * **Batch `EDITION_CARTES` — groups 27 to 34** (cases T27.1 to T34.1, effects E138 to E168), from
+ * `.agent/KANBAN/EDITION_CARTES/PLAN_TESTS_KANBAN_CARTES.md` §6.9, and batches `I` and `J` of
+ * `.agent/KANBAN/EDITION_CARTES/APPROCHE_KANBAN_EDITION_CARTES.md` (decisions `D-C18`, `D-C20`,
+ * `D-C23`, `D-C28`, `D-C29`, `D-C30`, `D-C36`, `D-C37`, `D-C38`, `D-C39`, `D-C40`, `D-C42`).
+ *
+ * **No suffix on these identifiers**: the groups of that plan start at 27, so they collide with
+ * neither the part B of the first plan (groups 2 to 10) nor the columns batch (groups 6 to 12).
+ *
+ * The screen now holds the cards **inside** its composition — there is no signal of their own
+ * (`D-C18`) — plus the single selection of the whole board, the move mode, the draft of a card
+ * being typed, and the note the picker answers with. The cards themselves are rendered by
+ * `KanbanColumnPanel`, which relays what they emit (`D-C22`), so every gesture of these cases
+ * goes through the controls those two panels render: the card's body, its trash, its text entry
+ * and its reference control, the column's add, « déplacer » and four arrows. Both panels stay
+ * real, as `ConfirmDialog` does, which is what keeps these cases black-box.
+ *
+ * DOM contract of this batch — **the parts the editor itself renders are proposed here**, §9 of
+ * the plan being unwritten, following what `kanban-card.spec.ts` and the groups 23 to 26 of
+ * `kanban-column.spec.ts` did. The selectors of the two panels are **theirs**, quoted from their
+ * own contracts rather than redefined:
+ *
+ * | Selector | Owner | Role | Cases |
+ * |---|---|---|---|
+ * | `.new-card` | editor | The draft of a card being typed, rendered in the slot of the column it targets, **outside** the composition (`D-C29`) | T27.x |
+ * | `.new-card-text` | editor | In-place text field of that draft (`input[type="text"]`) | T27.x |
+ * | `.btn-new-card-confirm` · `.btn-new-card-cancel` | editor | Validates / gives up the draft | T27.x |
+ * | `.btn-new-card-note` | editor | Reference control of the draft, which opens the picker before the card exists (`E156`) | T27.8 |
+ * | `app-confirm-dialog.confirm-remove-card` | editor | The **third** `ConfirmDialog` instance, whose message names the card (`D-C28`) | T29.x, T33.x |
+ * | `app-note-picker` | editor | The note picker, one instance per screen, driven by `[(open)]` (`D-C31`) | T27.8, T31.x |
+ * | `.btn-add-card` · `.btn-toggle-move-mode` | column | Asks for a card in that list / toggles the mode (`E135`, `E136`) | T27.x, T30.x |
+ * | `.btn-card-move-up` · `.btn-card-move-down` · `.btn-card-move-left` · `.btn-card-move-right` | column | The four arrows of the selected card (`D-C26`) | T30.3, T30.4 |
+ * | `app-kanban-card` · `.kanban-card.selected` | card | One panel per card, and the marker of the selected one (`D-PC4`) | T27.x to T33.x |
+ * | `.card-body` · `.card-text` · `.card-note-title` · `.btn-remove-card` | card | Touch target, text, note title, trash | T27.x to T34.1 |
+ * | `.card-text-input` · `.btn-text-confirm` · `.btn-text-cancel` · `.btn-card-note` | card | Text entry of a card and the reference control it carries (`D-PC3`) | T28.x, T31.x |
+ *
+ * Decisions taken here for lack of a plan contract, numbered `D-EC#` so as not to collide with the
+ * `D-EL#` of the columns batch nor with the `D-P#` / `D-PC#` of the two panels. They are the ones
+ * to raise into §7, §8 and §9 of the plan, or to reverse before the screen is written:
+ * - **D-EC1** — the draft of a new card is a `.new-card` block rendered **in the slot of the
+ *   column it targets**, with its own field and its two buttons, named apart from the
+ *   `.new-column` / `.btn-add-confirm` of a new **list**: a case must be able to aim at one of
+ *   the two drafts, and both may be open at once.
+ * - **D-EC2** — the draft is validated and given up by **two buttons**, for the reason `D-EL2`
+ *   and `D-PC2` already gave: the soft keyboard of a phone puts `Entrée` and `Échap` out of
+ *   reach.
+ * - **D-EC3** — these cases do not say whether the draft **stays open** after a validation: the
+ *   helper reopens it when it finds the add button, so both templates pass — `D-EL3` for the
+ *   lists.
+ * - **D-EC4** — the removal popup of a card is only required to **name** the card between the
+ *   quotes the other deletion popups use, and to be a **third instance** carrying
+ *   `.confirm-remove-card`: the wording of the sentence is left to the template, and `D-EL8`
+ *   already made every case say which popup it drives.
+ * - **D-EC5** — identifiers, positions and the referenced note of a card are **not all
+ *   displayed**, so the cases bearing on them read the composition the grouped save carries, as
+ *   `D-EL5` does for the columns. `cards: []` against `cards: undefined` (`E168`, `D-C9`) is read
+ *   there too: nothing on screen tells them apart.
+ * - **D-EC6** — the note picker is driven **through the child component**, not through its own
+ *   DOM: a case reads its `open` model and makes it emit on `selected`, which is the editor-side
+ *   contract (`D-C31`, `D-C33`). It is `D-P10` of the column panel applied here, and it keeps
+ *   these cases independent of a template whose own plan (groups 35 to 37) is not written yet.
+ *   The handle is taken by `By.css('app-note-picker')` rather than by importing `NotePicker`, so
+ *   that this file compiles before that component exists.
+ * - **D-EC7** — the editor renders `app-note-picker` **always**, its `open` state driving the
+ *   popup, exactly as the two `ConfirmDialog` instances are rendered.
+ * - **D-EC8** — a card text is read from the DOM **raw** when the case bears on the spaces
+ *   (T27.4, T28.2), and trimmed otherwise: `D-EL7` trims, which would make a screen that forgets
+ *   to clean the text pass. The cleaned text is also read back from the save, which is where
+ *   `D-EC5` points.
+ * - **D-EC9** — `NotesService` is **doubled** in this file although the screen does not inject it
+ *   (§8 of the plan says so, and it still holds): the picker it hosts does inject it (`D-C32`),
+ *   and a real `NotesService` would open a database connection in its constructor. The double is
+ *   also what makes `E146` observable — « no note deletion is asked for » needs something to ask.
+ * - **D-EC10** — `T33.3` is split into **five cases**, one per gesture, because a fresh screen
+ *   cannot be mounted twice inside one case: it is `E164`'s « five paths, five checks » taken
+ *   literally, and the precedent of `T12.1` to `T12.4` of the columns batch.
+ *
+ * Open point raised to the supervisor, and **not** decided here:
+ * - **`T29.6` has no reachable gesture** (`C161`, `E147`). The trash of a card is **out of the
+ *   document in move mode** (`D-C28`, `E124`), and leaving the mode drops the selection
+ *   (`E149`): there is no moment where the user can ask for the removal of the card they have
+ *   selected. The case therefore drives the only sequence that reaches that state — asking for
+ *   the removal **first**, then entering the mode and selecting the card behind the open popup —
+ *   which the guard of `E147` is what makes correct. On a phone the backdrop makes that sequence
+ *   impossible, so either `E147` becomes an invariant of the screen rather than a gesture, or
+ *   `D-C28` has to let the trash live in move mode.
  */
 
 /** The board the data source returns in edit mode, without any column unless a case adds some. */
@@ -208,6 +298,112 @@ const DISCARD_CONFIRM_LABEL = 'Quitter';
 /** Label of the popup button that keeps the user on the screen (`D2`). */
 const DISCARD_CANCEL_LABEL = 'Annuler';
 
+/**
+ * A note a card may reference. The whole note travels, title included (`D-C3`), so a case reads
+ * the title the card displays rather than resolving an identifier.
+ */
+const NOTE_COURSES: Note = {
+  id: 'note-courses',
+  title: 'Liste de courses',
+  category: null,
+  blocks: [],
+  updatedAt: '2026-11-10T08:00:00.000Z',
+};
+
+/**
+ * A second note, which is what tells « the note of **this** card » from « a note » apart: with a
+ * single one, a screen navigating to whichever note it finds first would pass (`T32.2`).
+ */
+const NOTE_PEINTURE: Note = {
+  id: 'note-peinture',
+  title: 'Choix de la peinture',
+  category: null,
+  blocks: [],
+  updatedAt: '2026-11-10T09:00:00.000Z',
+};
+
+/** First card of the first list: a text, and no reference. */
+const CARD_PAIN: KanbanCard = {
+  id: 'card-pain',
+  text: 'Acheter du pain',
+  note: null,
+  position: 0,
+};
+
+/** Second card of the first list: the one that must stay intact when the first is aimed at. */
+const CARD_LAIT: KanbanCard = {
+  id: 'card-lait',
+  text: 'Acheter du lait',
+  note: null,
+  position: 1,
+};
+
+/**
+ * Card of the second list, and the only one carrying a reference: removing it must leave its note
+ * alone (`E146`), and unlinking it must leave its text alone (`E154`).
+ */
+const CARD_PEINDRE: KanbanCard = {
+  id: 'card-peindre',
+  text: 'Peindre le salon',
+  note: NOTE_PEINTURE,
+  position: 0,
+};
+
+/** The same first card, linked to a note, for the cases that need **two** linked cards. */
+const CARD_PAIN_LINKED: KanbanCard = { ...CARD_PAIN, note: NOTE_COURSES };
+
+/** First list with its two cards: two are needed for « this one, and it alone » to mean anything. */
+const COLUMN_TO_DO_WITH_CARDS: KanbanColumn = { ...COLUMN_TO_DO, cards: [CARD_PAIN, CARD_LAIT] };
+
+/** Second list, with the single card that carries a reference. */
+const COLUMN_IN_PROGRESS_WITH_CARDS: KanbanColumn = {
+  ...COLUMN_IN_PROGRESS,
+  cards: [CARD_PEINDRE],
+};
+
+/**
+ * Starting composition of the cards batch: **two** lists carrying cards. Two are enough here —
+ * what a horizontal move needs is a neighbour, and `kanban-composition.spec.ts` is where the
+ * notches and the landing ranks are exercised.
+ */
+const TWO_COLUMNS_WITH_CARDS: KanbanColumn[] = [
+  COLUMN_TO_DO_WITH_CARDS,
+  COLUMN_IN_PROGRESS_WITH_CARDS,
+];
+
+/** Composition where **two** cards of two different lists reference two different notes. */
+const COLUMNS_WITH_TWO_LINKED_CARDS: KanbanColumn[] = [
+  { ...COLUMN_TO_DO, cards: [CARD_PAIN_LINKED, CARD_LAIT] },
+  COLUMN_IN_PROGRESS_WITH_CARDS,
+];
+
+/**
+ * Text a card is stored under when the typed text is empty or made of spaces (`D-C30`). It reads
+ * the same as the fallback of a board name and of a list name, and that is the point: one single
+ * rule, in one single place.
+ */
+const FALLBACK_CARD_TEXT = 'Sans titre';
+
+/**
+ * What a case reads of a saved card (`D-EC5`): its text, its rank, and the note it references **by
+ * identifier** — comparing two whole notes would freeze blocks no gesture of this screen touches.
+ */
+interface SavedCardOutline {
+  text: string;
+  position: number;
+  noteId: string | null;
+}
+
+/**
+ * The only part of the note picker these cases need (`D-EC6`): the `open` model the editor drives,
+ * and the `selected` output it answers through. Declared here rather than imported, so this file
+ * compiles before `NotePicker` exists.
+ */
+interface NotePickerHandle {
+  open: { (): boolean; set: (open: boolean) => void };
+  selected: { emit: (note: Note | null) => void };
+}
+
 describe("KanbanEditor (écran d'édition d'un tableau)", () => {
   let fixture: ComponentFixture<KanbanEditor>;
   let el: HTMLElement;
@@ -218,6 +414,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     renameKanban: ReturnType<typeof vi.fn>;
     getAllKanbans: ReturnType<typeof vi.fn>;
     deleteKanban: ReturnType<typeof vi.fn>;
+  };
+  let notesService: {
+    getAllNotes: ReturnType<typeof vi.fn>;
+    getNoteById: ReturnType<typeof vi.fn>;
+    deleteNote: ReturnType<typeof vi.fn>;
   };
   let navigateSpy: ReturnType<typeof vi.spyOn>;
 
@@ -232,6 +433,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
    * calls, and keeps `createKanban` and `renameKanban` although the save now goes through
    * `saveKanbanWithColumns` (`E48`): exposing them makes a stray call visible instead of letting
    * it throw, and lets every save case state that neither is called directly.
+   *
+   * `NotesService` is doubled as well (`D-EC9`): the screen itself does not inject it, but the
+   * note picker it hosts does (`D-C32`), and the real service opens a database connection in its
+   * constructor. Its `deleteNote` is what `E146` reads — a deletion that must never be asked
+   * for.
    *
    * The save double echoes what it receives (`D-EL6`): the board it hands back carries the name
    * and the composition it was given, and the identifier it was given — or a fresh one when it
@@ -265,6 +471,11 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       getAllKanbans: vi.fn().mockResolvedValue([]),
       deleteKanban: vi.fn().mockResolvedValue(undefined),
     };
+    notesService = {
+      getAllNotes: vi.fn().mockResolvedValue([NOTE_COURSES, NOTE_PEINTURE]),
+      getNoteById: vi.fn().mockResolvedValue(NOTE_COURSES),
+      deleteNote: vi.fn().mockResolvedValue(undefined),
+    };
 
     const routeParams = options.id === undefined ? {} : { id: options.id };
     const activatedRouteStub = { snapshot: { paramMap: convertToParamMap(routeParams) } };
@@ -274,6 +485,7 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       providers: [
         provideRouter([]),
         { provide: KanbanService, useValue: kanbanService },
+        { provide: NotesService, useValue: notesService },
         { provide: ActivatedRoute, useValue: activatedRouteStub },
       ],
     }).compileComponents();
@@ -595,6 +807,408 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
     const buttons = moveButtonsOf(direction);
     const buttonToPress = buttons[index] ?? null;
     await clickElement(buttonToPress, `déplacement « ${direction} » de rang ${index}`);
+  }
+
+  /**
+   * Gives the card panels rendered by the list of that rank, in display order.
+   * @param columnIndex The rank of the list, counted from the left.
+   * @returns One element per rendered card, top to bottom.
+   */
+  function cardPanelsOf(columnIndex: number): HTMLElement[] {
+    const panels = columnPanels();
+    const panelOfColumn = panels[columnIndex] ?? null;
+    if (panelOfColumn === null) {
+      return [];
+    }
+    const cardElements = panelOfColumn.querySelectorAll<HTMLElement>('app-kanban-card');
+    return Array.from(cardElements);
+  }
+
+  /**
+   * Gives the texts the cards of that list display, in display order, trimmed but **not**
+   * normalized (`D-EL7`). A case bearing on the spaces of a text reads {@link rawCardTextOf}
+   * instead (`D-EC8`).
+   * @param columnIndex The rank of the list, counted from the left.
+   * @returns One text per rendered card, top to bottom.
+   */
+  function cardTextsOf(columnIndex: number): string[] {
+    const cards = cardPanelsOf(columnIndex);
+    return cards.map((card: HTMLElement): string => {
+      const textElement = card.querySelector('.card-text');
+      const displayedText = textElement?.textContent ?? '';
+      return displayedText.trim();
+    });
+  }
+
+  /**
+   * Gives the text of one card **exactly** as the panel renders it, spaces included: what a case
+   * about the cleaning of a text needs, a trimmed reading letting a screen that cleans nothing
+   * pass (`D-EC8`).
+   * @param columnIndex The rank of the list, counted from the left.
+   * @param cardIndex The rank of the card inside that list, counted from the top.
+   * @returns The rendered text, or an empty string when the card or its text is absent.
+   */
+  function rawCardTextOf(columnIndex: number, cardIndex: number): string {
+    const cards = cardPanelsOf(columnIndex);
+    const cardAimedAt = cards[cardIndex] ?? null;
+    const textElement = cardAimedAt?.querySelector('.card-text') ?? null;
+    return textElement?.textContent ?? '';
+  }
+
+  /**
+   * Gives the note titles the cards of that list display, in display order. A card without a
+   * reference shows none, so it contributes nothing (`E117`): the length of the result is the
+   * number of **linked** cards, not the number of cards.
+   * @param columnIndex The rank of the list, counted from the left.
+   * @returns One title per linked card, top to bottom.
+   */
+  function noteTitlesOf(columnIndex: number): string[] {
+    const cards = cardPanelsOf(columnIndex);
+    const shownTitles: string[] = [];
+    cards.forEach((card: HTMLElement): void => {
+      const titleElement = card.querySelector('.card-note-title');
+      if (titleElement !== null) {
+        const displayedTitle = titleElement.textContent ?? '';
+        shownTitles.push(displayedTitle.trim());
+      }
+    });
+    return shownTitles;
+  }
+
+  /**
+   * Gives the texts of the cards marked as selected, **across the whole board**: the single
+   * selection spans it (`D-C23`), so a case reads it here rather than list by list.
+   * @returns One text per selected card, which `E148` holds to at most one.
+   */
+  function selectedCardTexts(): string[] {
+    const selectedCards = el.querySelectorAll<HTMLElement>('.kanban-card.selected');
+    const selectedElements = Array.from(selectedCards);
+    return selectedElements.map((card: HTMLElement): string => {
+      const textElement = card.querySelector('.card-text');
+      const displayedText = textElement?.textContent ?? '';
+      return displayedText.trim();
+    });
+  }
+
+  /**
+   * Opens the draft of a new card in the list of that rank, through the add button that list
+   * renders (`E135`).
+   * @param columnIndex The rank of the list the card is added to.
+   * @throws When that list or its add button is missing.
+   */
+  async function startAddCardIn(columnIndex: number): Promise<void> {
+    const panels = columnPanels();
+    const panelAimedAt = panels[columnIndex] ?? null;
+    const addButton = panelAimedAt?.querySelector<HTMLElement>('.btn-add-card') ?? null;
+    await clickElement(addButton, `ajout d'une carte à la liste de rang ${columnIndex}`);
+  }
+
+  /**
+   * Types a text in the field of the draft, leaving the draft open.
+   * @param typedText The text to type, as the user would.
+   * @throws When the draft field is not open.
+   */
+  async function typeNewCardText(typedText: string): Promise<void> {
+    const field = el.querySelector<HTMLInputElement>('.new-card-text');
+    if (field === null) {
+      throw new Error('Aucun champ de texte de nouvelle carte à remplir.');
+    }
+    field.value = typedText;
+    field.dispatchEvent(new Event('input'));
+    await settle();
+  }
+
+  /** Validates the draft, which is the only moment the card enters the composition (`D-C29`). */
+  async function confirmAddCard(): Promise<void> {
+    const confirmButton = el.querySelector<HTMLElement>('.btn-new-card-confirm');
+    await clickElement(confirmButton, "validation de l'ajout d'une carte");
+  }
+
+  /** Gives the draft up, which must leave the composition untouched (`E140`). */
+  async function giveUpAddCard(): Promise<void> {
+    const cancelButton = el.querySelector<HTMLElement>('.btn-new-card-cancel');
+    await clickElement(cancelButton, "abandon de l'ajout d'une carte");
+  }
+
+  /**
+   * Adds a card to that list the way the user does: the add gesture, the text, then the
+   * validation. The gesture is only played when no draft is open, the draft being allowed to stay
+   * open after a validation so cards can be added in a row (`D-EC3`).
+   * @param columnIndex The rank of the list the card is added to.
+   * @param typedText The text to type before validating.
+   * @throws When the draft, its field or its validation button is missing.
+   */
+  async function addCardToColumn(columnIndex: number, typedText: string): Promise<void> {
+    const openedDraft = el.querySelector<HTMLInputElement>('.new-card-text');
+    if (openedDraft === null) {
+      await startAddCardIn(columnIndex);
+    }
+    await typeNewCardText(typedText);
+    await confirmAddCard();
+  }
+
+  /**
+   * Retypes the text of one card through its own panel: its body opens the in-place entry, which
+   * is then filled and validated. The panel emits the text **as it was typed** (`D-C30`), so what
+   * a case reads back is what the screen made of it.
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @param typedText The text to type.
+   * @throws When the card, its entry or its validation button is missing.
+   */
+  async function retypeCardText(
+    columnIndex: number,
+    cardIndex: number,
+    typedText: string,
+  ): Promise<void> {
+    await openTextEntryOf(columnIndex, cardIndex);
+
+    const filledCards = cardPanelsOf(columnIndex);
+    const filledCard = filledCards[cardIndex] ?? null;
+    const field = filledCard?.querySelector<HTMLInputElement>('.card-text-input') ?? null;
+    if (field === null) {
+      throw new Error(`Aucun champ de texte sur la carte de rang ${cardIndex}.`);
+    }
+    field.value = typedText;
+    field.dispatchEvent(new Event('input'));
+    await settle();
+
+    const typedCards = cardPanelsOf(columnIndex);
+    const typedCard = typedCards[cardIndex] ?? null;
+    const confirmButton = typedCard?.querySelector<HTMLElement>('.btn-text-confirm') ?? null;
+    await clickElement(confirmButton, `validation du texte de la carte de rang ${cardIndex}`);
+  }
+
+  /**
+   * Touches the body of one card, the single touch target that means two things: it opens the
+   * text entry out of move mode (`E119`) and asks for the selection in move mode (`E120`).
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @throws When the card or its body is missing.
+   */
+  async function touchCardBody(columnIndex: number, cardIndex: number): Promise<void> {
+    const cards = cardPanelsOf(columnIndex);
+    const cardAimedAt = cards[cardIndex] ?? null;
+    const bodyButton = cardAimedAt?.querySelector<HTMLElement>('.card-body') ?? null;
+    await clickElement(bodyButton, `corps de la carte de rang ${cardIndex}`);
+  }
+
+  /**
+   * Opens the text entry of one card, which is what touching its body does **out** of move mode
+   * (`E119`).
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   */
+  async function openTextEntryOf(columnIndex: number, cardIndex: number): Promise<void> {
+    await touchCardBody(columnIndex, cardIndex);
+  }
+
+  /**
+   * Gives the text entry of one card up, which emits nothing (`E122`) and brings the card back to
+   * rest so its text and its note title can be read. Does nothing when no entry is open: that
+   * state belongs to the card panel (`D-PC1`), not to the screen under test.
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   */
+  async function giveUpTextEntryOf(columnIndex: number, cardIndex: number): Promise<void> {
+    const cards = cardPanelsOf(columnIndex);
+    const cardAimedAt = cards[cardIndex] ?? null;
+    const cancelButton = cardAimedAt?.querySelector<HTMLElement>('.btn-text-cancel') ?? null;
+    if (cancelButton === null) {
+      return;
+    }
+    await clickElement(cancelButton, `abandon de la saisie de la carte de rang ${cardIndex}`);
+  }
+
+  /**
+   * Asks for the removal of one card, through the trash its own panel carries. The panel only
+   * emits a request: the confirmation belongs to the editor (`D-C28`).
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @throws When the card or its trash is missing.
+   */
+  async function requestRemovalOfCard(columnIndex: number, cardIndex: number): Promise<void> {
+    const cards = cardPanelsOf(columnIndex);
+    const cardAimedAt = cards[cardIndex] ?? null;
+    const trashButton = cardAimedAt?.querySelector<HTMLElement>('.btn-remove-card') ?? null;
+    await clickElement(trashButton, `corbeille de la carte de rang ${cardIndex}`);
+  }
+
+  /**
+   * Toggles the move mode through the « déplacer » button of that list. The mode is worth the
+   * whole board whichever list it was touched from (`D-C23`).
+   * @param columnIndex The rank of the list whose button is touched.
+   * @throws When that list or its button is missing.
+   */
+  async function toggleMoveModeFrom(columnIndex: number): Promise<void> {
+    const panels = columnPanels();
+    const panelAimedAt = panels[columnIndex] ?? null;
+    const toggleButton =
+      panelAimedAt?.querySelector<HTMLElement>('.btn-toggle-move-mode') ?? null;
+    await clickElement(toggleButton, `bascule du mode déplacement depuis le rang ${columnIndex}`);
+  }
+
+  /**
+   * Selects one card by touching its body **in move mode**, where that very touch asks for the
+   * selection instead of opening the entry (`E120`).
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @throws When the card or its body is missing.
+   */
+  async function selectCard(columnIndex: number, cardIndex: number): Promise<void> {
+    await touchCardBody(columnIndex, cardIndex);
+  }
+
+  /**
+   * Moves the selected card one notch, through the arrow of that direction. Only the list holding
+   * the selected card renders them (`D-C26`), so the selector is unambiguous.
+   * @param direction Where the selected card is asked to go.
+   * @throws When that arrow is not rendered.
+   */
+  async function moveSelectedCard(direction: 'up' | 'down' | 'left' | 'right'): Promise<void> {
+    const arrowButton = el.querySelector<HTMLElement>(`.btn-card-move-${direction}`);
+    await clickElement(arrowButton, `flèche « ${direction} » de la carte sélectionnée`);
+  }
+
+  /**
+   * Asks for the choice of a note for one card, through the reference control its text entry
+   * carries (`D-PC3`): the entry is therefore opened first, and left open — closing it is the job
+   * of {@link giveUpTextEntryOf}.
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @throws When the card, its entry or its reference control is missing.
+   */
+  async function requestNoteFor(columnIndex: number, cardIndex: number): Promise<void> {
+    await openTextEntryOf(columnIndex, cardIndex);
+
+    const openedCards = cardPanelsOf(columnIndex);
+    const openedCard = openedCards[cardIndex] ?? null;
+    const noteButton = openedCard?.querySelector<HTMLElement>('.btn-card-note') ?? null;
+    await clickElement(noteButton, `contrôle de référence de la carte de rang ${cardIndex}`);
+  }
+
+  /**
+   * Asks for the choice of a note for the **draft** being typed, which is a target like any other
+   * (`E152`).
+   * @throws When the draft or its reference control is missing.
+   */
+  async function requestNoteForDraft(): Promise<void> {
+    const noteButton = el.querySelector<HTMLElement>('.btn-new-card-note');
+    await clickElement(noteButton, 'contrôle de référence de la nouvelle carte');
+  }
+
+  /**
+   * Gives the note picker the screen hosts, taken through its element rather than through an
+   * import (`D-EC6`).
+   * @returns The `open` model the editor drives, and the `selected` output it answers through.
+   * @throws When the screen renders no picker, which `D-EC7` requires it to.
+   */
+  function notePicker(): NotePickerHandle {
+    const pickerElement = fixture.debugElement.query(By.css('app-note-picker'));
+    if (pickerElement === null) {
+      throw new Error('Aucune popup de sélection de note dans le gabarit.');
+    }
+    return pickerElement.componentInstance as NotePickerHandle;
+  }
+
+  /**
+   * Tells whether the note picker is open, which is the editor's own side of the contract: it
+   * drives `[(open)]` (`D-EC6`).
+   * @returns True when the screen holds the picker open.
+   */
+  function notePickerIsOpen(): boolean {
+    const picker = notePicker();
+    return picker.open();
+  }
+
+  /**
+   * Answers the picker the way the user's choice does: the whole note, or `null` for the explicit
+   * « Aucune note » (`D-C33`).
+   * @param chosenNote The note chosen, or `null` for « Aucune note ».
+   */
+  async function chooseNoteInPicker(chosenNote: Note | null): Promise<void> {
+    const picker = notePicker();
+    picker.selected.emit(chosenNote);
+    await settle();
+  }
+
+  /**
+   * Gives the picker up the way a click outside of it does: it closes and emits **nothing**, so
+   * the screen has nothing to handle (`E155`).
+   */
+  async function giveUpNotePicker(): Promise<void> {
+    const picker = notePicker();
+    picker.open.set(false);
+    await settle();
+  }
+
+  /**
+   * Links a note to one card the way the user does, and brings the card back to rest: the entry
+   * it went through emits nothing when given up (`E122`), so it cannot change what a case reads.
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @param chosenNote The note chosen, or `null` for « Aucune note ».
+   */
+  async function linkNoteTo(
+    columnIndex: number,
+    cardIndex: number,
+    chosenNote: Note | null,
+  ): Promise<void> {
+    await requestNoteFor(columnIndex, cardIndex);
+    await chooseNoteInPicker(chosenNote);
+    await giveUpTextEntryOf(columnIndex, cardIndex);
+  }
+
+  /**
+   * Asks for the opening of the note one card references, through the title it displays: a
+   * request, not a navigation — the screen is the one that decides (`D-C37`).
+   * @param columnIndex The rank of the list holding the card.
+   * @param cardIndex The rank of the card inside that list.
+   * @throws When the card or its note title is missing.
+   */
+  async function openNoteOf(columnIndex: number, cardIndex: number): Promise<void> {
+    const cards = cardPanelsOf(columnIndex);
+    const cardAimedAt = cards[cardIndex] ?? null;
+    const titleButton = cardAimedAt?.querySelector<HTMLElement>('.card-note-title') ?? null;
+    await clickElement(titleButton, `titre de note de la carte de rang ${cardIndex}`);
+  }
+
+  /**
+   * Gives the address of the screen that edits one note, which is where `US5` sends the user.
+   * @param note The note to open.
+   * @returns The address as {@link navigations} reads it.
+   */
+  function noteRouteOf(note: Note): string {
+    return `/notes/edit/${note.id}`;
+  }
+
+  /**
+   * Gives the cards carried by one list of the last grouped save, as what a case bears on
+   * (`D-EC5`): their text, their rank and the note they reference by identifier.
+   * @param columnIndex The rank of the list, counted from the left.
+   * @returns One entry per saved card, in the order the save carried them.
+   */
+  function savedCardsOf(columnIndex: number): SavedCardOutline[] {
+    const savedColumns = lastSavedColumns();
+    const savedColumn = savedColumns[columnIndex] ?? null;
+    const savedCards = savedColumn?.cards ?? [];
+    return savedCards.map((card: KanbanCard): SavedCardOutline => {
+      const referencedNote: Note | null = card.note;
+      return { text: card.text, position: card.position, noteId: referencedNote?.id ?? null };
+    });
+  }
+
+  /**
+   * Gives the identifiers of the cards one list carried in the last grouped save. Identifiers are
+   * displayed nowhere, so this is where a case about a **fresh** one reads it (`D-EC5`, `D-C20`).
+   * @param columnIndex The rank of the list, counted from the left.
+   * @returns One identifier per saved card, in the order the save carried them.
+   */
+  function savedCardIdsOf(columnIndex: number): string[] {
+    const savedColumns = lastSavedColumns();
+    const savedColumn = savedColumns[columnIndex] ?? null;
+    const savedCards = savedColumn?.cards ?? [];
+    return savedCards.map((card: KanbanCard): string => card.id);
   }
 
   // ---------------------------------------------------------------------------
@@ -2399,6 +3013,760 @@ describe("KanbanEditor (écran d'édition d'un tableau)", () => {
       expect(confirmPopupAfterAnswer).toBe(false);
       expect(navigationsAfterAnswer).toEqual([]);
       expect(confirmPopupOnSecondBack).toBe(true);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 27 — Créer une carte (cartes)
+  // ---------------------------------------------------------------------------
+  describe('Créer une carte', () => {
+    it('T27.1 fait apparaître la carte validée en dernière position de sa colonne', async () => {
+      const typedText = 'Acheter du beurre';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, typedText);
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const textsInSecondColumn = cardTextsOf(1);
+
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text, typedText]);
+      expect(textsInSecondColumn).toEqual([CARD_PEINDRE.text]);
+    });
+
+    it("T27.2 donne à la carte ajoutée un identifiant qui n'existait pas", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await clickOn('.btn-save');
+
+      const savedIds = savedCardIdsOf(0);
+      const addedId = savedIds[savedIds.length - 1] ?? '';
+      const keptIds = savedIds.slice(0, 2);
+      const identifiersBeforeTheAdd = [CARD_PAIN.id, CARD_LAIT.id, CARD_PEINDRE.id];
+
+      expect(savedIds.length).toBe(3);
+      expect(addedId.length).toBeGreaterThan(0);
+      expect(identifiersBeforeTheAdd).not.toContain(addedId);
+      expect(keptIds).toEqual([CARD_PAIN.id, CARD_LAIT.id]);
+    });
+
+    it("T27.3 enchaîne plusieurs ajouts sans quitter l'écran", async () => {
+      const firstText = 'Acheter du beurre';
+      const secondText = 'Acheter du miel';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, firstText);
+      await addCardToColumn(0, secondText);
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const editorStillShown = isShown('.kanban-editor');
+      const requestedNavigations = navigations();
+
+      expect(textsInFirstColumn).toEqual([
+        CARD_PAIN.text,
+        CARD_LAIT.text,
+        firstText,
+        secondText,
+      ]);
+      expect(editorStillShown).toBe(true);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T27.4 retire les espaces de bord du texte entrant et garde les intérieurs', async () => {
+      const typedText = '   Acheter du  pain de mie   ';
+      const expectedText = 'Acheter du  pain de mie';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, typedText);
+      await clickOn('.btn-save');
+
+      const displayedText = rawCardTextOf(0, 2);
+      const savedCards = savedCardsOf(0);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+
+      expect(displayedText).toBe(expectedText);
+      expect(savedTexts).toEqual([CARD_PAIN.text, CARD_LAIT.text, expectedText]);
+    });
+
+    it('T27.5 replie un texte entrant vide sur « Sans titre »', async () => {
+      const spacesOnlyText = '   ';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, spacesOnlyText);
+      await clickOn('.btn-save');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const savedCards = savedCardsOf(0);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text, FALLBACK_CARD_TEXT]);
+      expect(savedTexts).toEqual([CARD_PAIN.text, CARD_LAIT.text, FALLBACK_CARD_TEXT]);
+    });
+
+    it("T27.6 n'ajoute rien quand la saisie d'ajout est abandonnée", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await startAddCardIn(0);
+      await typeNewCardText('Acheter du beurre');
+      await giveUpAddCard();
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const draftFieldShown = isShown('.new-card-text');
+      const writesOnGiveUp = writeCalls();
+
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text]);
+      expect(draftFieldShown).toBe(false);
+      expect(writesOnGiveUp).toBe(0);
+    });
+
+    it("T27.7 enregistre sans la carte en cours de saisie, et sans échouer", async () => {
+      const draftText = 'Acheter du beurre';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await startAddCardIn(0);
+      await typeNewCardText(draftText);
+      await clickOn('.btn-save');
+
+      const requestedSaves = saveCalls();
+      const savedCards = savedCardsOf(0);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+      const errorBannerShown = isShown('.action-error');
+      const requestedNavigations = navigations();
+
+      expect(requestedSaves.length).toBe(1);
+      expect(savedTexts).toEqual([CARD_PAIN.text, CARD_LAIT.text]);
+      expect(errorBannerShown).toBe(false);
+      expect(requestedNavigations).toEqual([KANBAN_LIST_ROUTE]);
+    });
+
+    it('T27.8 pose sur la carte créée la note choisie avant la validation', async () => {
+      const typedText = 'Acheter du beurre';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await startAddCardIn(0);
+      await typeNewCardText(typedText);
+      await requestNoteForDraft();
+      await chooseNoteInPicker(NOTE_COURSES);
+      await confirmAddCard();
+      await clickOn('.btn-save');
+
+      const titlesInFirstColumn = noteTitlesOf(0);
+      const savedCards = savedCardsOf(0);
+      const savedNoteIds = savedCards.map((card: SavedCardOutline): string | null => card.noteId);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+
+      expect(titlesInFirstColumn).toEqual([NOTE_COURSES.title]);
+      expect(savedTexts).toEqual([CARD_PAIN.text, CARD_LAIT.text, typedText]);
+      expect(savedNoteIds).toEqual([null, null, NOTE_COURSES.id]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 28 — Modifier le texte d'une carte (cartes)
+  // ---------------------------------------------------------------------------
+  describe("Modifier le texte d'une carte", () => {
+    it('T28.1 ne change le texte que de la carte qui a émis', async () => {
+      const typedText = 'Acheter du pain complet';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await retypeCardText(0, 0, typedText);
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const textsInSecondColumn = cardTextsOf(1);
+      const titlesInSecondColumn = noteTitlesOf(1);
+
+      expect(textsInFirstColumn).toEqual([typedText, CARD_LAIT.text]);
+      expect(textsInSecondColumn).toEqual([CARD_PEINDRE.text]);
+      expect(titlesInSecondColumn).toEqual([NOTE_PEINTURE.title]);
+    });
+
+    it('T28.2 retire les espaces de bord du texte modifié', async () => {
+      const typedText = '   Acheter du  pain complet   ';
+      const expectedText = 'Acheter du  pain complet';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await retypeCardText(0, 0, typedText);
+      await clickOn('.btn-save');
+
+      const displayedText = rawCardTextOf(0, 0);
+      const savedCards = savedCardsOf(0);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+
+      expect(displayedText).toBe(expectedText);
+      expect(savedTexts).toEqual([expectedText, CARD_LAIT.text]);
+    });
+
+    it('T28.3 replie un texte modifié vide sur « Sans titre »', async () => {
+      const spacesOnlyText = '  ';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await retypeCardText(0, 0, spacesOnlyText);
+      await clickOn('.btn-save');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const savedCards = savedCardsOf(0);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+
+      expect(textsInFirstColumn).toEqual([FALLBACK_CARD_TEXT, CARD_LAIT.text]);
+      expect(savedTexts).toEqual([FALLBACK_CARD_TEXT, CARD_LAIT.text]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 29 — Supprimer une carte (cartes)
+  // ---------------------------------------------------------------------------
+  describe('Supprimer une carte', () => {
+    it('T29.1 ouvre la popup de confirmation en nommant la carte visée', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(0, 1);
+
+      const confirmPopupShown = isShown('.confirm-remove-card .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-remove-card .confirm-message');
+      const columnPopupShown = isShown('.confirm-remove-column .confirm-backdrop');
+      const leavePopupShown = isShown('.confirm-leave .confirm-backdrop');
+
+      expect(confirmPopupShown).toBe(true);
+      expect(confirmMessage).toContain(`« ${CARD_LAIT.text} »`);
+      expect(confirmMessage).not.toBe(DISCARD_CHANGES_MESSAGE);
+      expect(columnPopupShown).toBe(false);
+      expect(leavePopupShown).toBe(false);
+    });
+
+    it("T29.2 laisse la carte en place tant que la popup n'a pas répondu", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(0, 1);
+
+      const confirmPopupShown = isShown('.confirm-remove-card .confirm-backdrop');
+      const textsInFirstColumn = cardTextsOf(0);
+      const writesWhileWaiting = writeCalls();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text]);
+      expect(writesWhileWaiting).toBe(0);
+    });
+
+    it('T29.3 retire la carte confirmée, et elle seule, en refermant les positions', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(0, 0);
+      await clickOn('.confirm-remove-card .confirm-card .btn-confirm');
+      await clickOn('.btn-save');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const textsInSecondColumn = cardTextsOf(1);
+      const savedCards = savedCardsOf(0);
+
+      expect(textsInFirstColumn).toEqual([CARD_LAIT.text]);
+      expect(textsInSecondColumn).toEqual([CARD_PEINDRE.text]);
+      expect(savedCards).toEqual([{ text: CARD_LAIT.text, position: 0, noteId: null }]);
+    });
+
+    it('T29.4 conserve la carte quand le retrait est refusé', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(0, 0);
+      await clickOn('.confirm-remove-card .confirm-card .btn-cancel');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const confirmPopupAfterAnswer = isShown('.confirm-remove-card .confirm-backdrop');
+      const writesOnRefusal = writeCalls();
+
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text]);
+      expect(confirmPopupAfterAnswer).toBe(false);
+      expect(writesOnRefusal).toBe(0);
+    });
+
+    it("T29.5 ne demande aucune suppression de note quand la carte qui en portait une est retirée", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(1, 0);
+      await clickOn('.confirm-remove-card .confirm-card .btn-confirm');
+
+      const textsInSecondColumn = cardTextsOf(1);
+      const titlesInSecondColumn = noteTitlesOf(1);
+
+      expect(textsInSecondColumn).toEqual([]);
+      expect(titlesInSecondColumn).toEqual([]);
+      expect(notesService.deleteNote).not.toHaveBeenCalled();
+    });
+
+    it('T29.6 fait retomber la sélection quand la carte retirée est celle qui est sélectionnée', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(0, 0);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+
+      const selectedBeforeAnswer = selectedCardTexts();
+
+      await clickOn('.confirm-remove-card .confirm-card .btn-confirm');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const selectedAfterRemoval = selectedCardTexts();
+      const arrowsShown = isShown('.btn-card-move');
+
+      expect(selectedBeforeAnswer).toEqual([CARD_PAIN.text]);
+      expect(textsInFirstColumn).toEqual([CARD_LAIT.text]);
+      expect(selectedAfterRemoval).toEqual([]);
+      expect(arrowsShown).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 30 — Mode déplacement (cartes)
+  // ---------------------------------------------------------------------------
+  describe('Mode déplacement', () => {
+    it("T30.1 désélectionne la carte précédente quand on sélectionne celle d'une autre colonne", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+
+      const selectedAfterFirstTouch = selectedCardTexts();
+
+      await selectCard(1, 0);
+
+      const selectedAfterSecondTouch = selectedCardTexts();
+
+      expect(selectedAfterFirstTouch).toEqual([CARD_PAIN.text]);
+      expect(selectedAfterSecondTouch).toEqual([CARD_PEINDRE.text]);
+    });
+
+    it('T30.2 désélectionne en sortant du mode déplacement', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+
+      const selectedWhileInMode = selectedCardTexts();
+
+      await toggleMoveModeFrom(0);
+
+      const selectedAfterExit = selectedCardTexts();
+      const arrowsShown = isShown('.btn-card-move');
+      const trashShown = isShown('.btn-remove-card');
+
+      expect(selectedWhileInMode).toEqual([CARD_PAIN.text]);
+      expect(selectedAfterExit).toEqual([]);
+      expect(arrowsShown).toBe(false);
+      expect(trashShown).toBe(true);
+    });
+
+    it('T30.3 garde la carte sélectionnée après un déplacement vertical', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 1);
+      await moveSelectedCard('up');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const selectedAfterMove = selectedCardTexts();
+
+      expect(textsInFirstColumn).toEqual([CARD_LAIT.text, CARD_PAIN.text]);
+      expect(selectedAfterMove).toEqual([CARD_LAIT.text]);
+    });
+
+    it('T30.4 garde la carte sélectionnée après un changement de colonne', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+      await moveSelectedCard('right');
+
+      const textsInFirstColumn = cardTextsOf(0);
+      const textsInSecondColumn = cardTextsOf(1);
+      const selectedAfterMove = selectedCardTexts();
+
+      expect(textsInFirstColumn).toEqual([CARD_LAIT.text]);
+      expect(textsInSecondColumn).toEqual([CARD_PAIN.text, CARD_PEINDRE.text]);
+      expect(selectedAfterMove).toEqual([CARD_PAIN.text]);
+    });
+
+    it('T30.5 laisse le retour immédiat et sans question après être entré dans le mode, avoir sélectionné et être sorti', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+
+      const selectedWhileInMode = selectedCardTexts();
+
+      await toggleMoveModeFrom(0);
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+      const writesOnTheWayOut = writeCalls();
+
+      expect(selectedWhileInMode).toEqual([CARD_PAIN.text]);
+      expect(confirmPopupShown).toBe(false);
+      expect(requestedNavigations).toEqual([KANBAN_LIST_ROUTE]);
+      expect(writesOnTheWayOut).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 31 — Référence d'une carte (cartes)
+  // ---------------------------------------------------------------------------
+  describe("Référence d'une carte", () => {
+    it('T31.1 ouvre la popup de sélection sur demande d’une carte', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+
+      const pickerBeforeRequest = notePickerIsOpen();
+
+      await requestNoteFor(0, 0);
+
+      const pickerAfterRequest = notePickerIsOpen();
+
+      expect(pickerBeforeRequest).toBe(false);
+      expect(pickerAfterRequest).toBe(true);
+    });
+
+    it('T31.2 pose la note émise sur la carte visée, et sur elle seule', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await linkNoteTo(0, 0, NOTE_COURSES);
+      await clickOn('.btn-save');
+
+      const titlesInFirstColumn = noteTitlesOf(0);
+      const titlesInSecondColumn = noteTitlesOf(1);
+      const textsInFirstColumn = cardTextsOf(0);
+      const savedCards = savedCardsOf(0);
+      const savedNoteIds = savedCards.map((card: SavedCardOutline): string | null => card.noteId);
+      const pickerAfterChoice = notePickerIsOpen();
+
+      expect(titlesInFirstColumn).toEqual([NOTE_COURSES.title]);
+      expect(titlesInSecondColumn).toEqual([NOTE_PEINTURE.title]);
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text]);
+      expect(savedNoteIds).toEqual([NOTE_COURSES.id, null]);
+      expect(pickerAfterChoice).toBe(false);
+    });
+
+    it('T31.3 vide la référence et laisse le texte quand « Aucune note » est émis', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await linkNoteTo(1, 0, null);
+      await clickOn('.btn-save');
+
+      const titlesInSecondColumn = noteTitlesOf(1);
+      const textsInSecondColumn = cardTextsOf(1);
+      const savedCards = savedCardsOf(1);
+
+      expect(titlesInSecondColumn).toEqual([]);
+      expect(textsInSecondColumn).toEqual([CARD_PEINDRE.text]);
+      expect(savedCards).toEqual([{ text: CARD_PEINDRE.text, position: 0, noteId: null }]);
+    });
+
+    it('T31.4 laisse la référence inchangée quand on renonce à la popup', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestNoteFor(1, 0);
+      await giveUpNotePicker();
+
+      const titlesOfTheLinkedCard = noteTitlesOf(1);
+
+      await requestNoteFor(0, 0);
+      await giveUpNotePicker();
+
+      const titlesOfTheUnlinkedColumn = noteTitlesOf(0);
+      const writesOnGiveUp = writeCalls();
+
+      expect(titlesOfTheLinkedCard).toEqual([NOTE_PEINTURE.title]);
+      expect(titlesOfTheUnlinkedColumn).toEqual([]);
+      expect(writesOnGiveUp).toBe(0);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 32 — Ouvrir la note référencée (cartes)
+  // ---------------------------------------------------------------------------
+  describe('Ouvrir la note référencée', () => {
+    it("T32.1 navigue immédiatement vers la note quand rien n'est en attente", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await openNoteOf(1, 0);
+
+      const requestedNavigations = navigations();
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const expectedRoute = noteRouteOf(NOTE_PEINTURE);
+
+      expect(requestedNavigations).toEqual([expectedRoute]);
+      expect(confirmPopupShown).toBe(false);
+    });
+
+    it('T32.2 ouvre la note que la carte touchée référence, et pas une autre', async () => {
+      await openBoardWithColumns(COLUMNS_WITH_TWO_LINKED_CARDS);
+      await openNoteOf(1, 0);
+      await openNoteOf(0, 0);
+
+      const requestedNavigations = navigations();
+      const routeOfTheSecondColumn = noteRouteOf(NOTE_PEINTURE);
+      const routeOfTheFirstColumn = noteRouteOf(NOTE_COURSES);
+
+      expect(requestedNavigations).toEqual([routeOfTheSecondColumn, routeOfTheFirstColumn]);
+    });
+
+    it("T32.3 ouvre la popup d'abandon sans naviguer quand une modification est en attente", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await openNoteOf(1, 0);
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-leave .confirm-message');
+      const requestedNavigations = navigations();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(confirmMessage).toBe(DISCARD_CHANGES_MESSAGE);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it("T32.4 navigue vers la note sans enregistrer quand l'abandon est confirmé", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await openNoteOf(1, 0);
+      await clickOn('.confirm-leave .confirm-card .btn-confirm');
+
+      const requestedNavigations = navigations();
+      const writesOnTheWayOut = writeCalls();
+      const expectedRoute = noteRouteOf(NOTE_PEINTURE);
+
+      expect(requestedNavigations).toEqual([expectedRoute]);
+      expect(writesOnTheWayOut).toBe(0);
+      expect(kanbanService.saveKanbanWithColumns).not.toHaveBeenCalled();
+    });
+
+    it("T32.5 laisse l'écran intact quand l'abandon est refusé", async () => {
+      const typedText = 'Acheter du beurre';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, typedText);
+      await openNoteOf(1, 0);
+      await clickOn('.confirm-leave .confirm-card .btn-cancel');
+
+      const editorStillShown = isShown('.kanban-editor');
+      const textsInFirstColumn = cardTextsOf(0);
+      const confirmPopupAfterAnswer = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+
+      expect(editorStillShown).toBe(true);
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text, typedText]);
+      expect(confirmPopupAfterAnswer).toBe(false);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T32.6 ramène à la liste, et non à la note, quand on touche « Retour » après ce refus', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await openNoteOf(1, 0);
+      await clickOn('.confirm-leave .confirm-card .btn-cancel');
+      await clickOn('.btn-back');
+
+      const confirmPopupOnBack = isShown('.confirm-leave .confirm-backdrop');
+
+      await clickOn('.confirm-leave .confirm-card .btn-confirm');
+
+      const requestedNavigations = navigations();
+      const routeOfTheNote = noteRouteOf(NOTE_PEINTURE);
+
+      expect(confirmPopupOnBack).toBe(true);
+      expect(requestedNavigations).toEqual([KANBAN_LIST_ROUTE]);
+      expect(requestedNavigations).not.toContain(routeOfTheNote);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 33 — Enregistrement et modifications en attente (cartes)
+  // ---------------------------------------------------------------------------
+  describe('Enregistrement et modifications en attente', () => {
+    it('T33.1 ne demande aucune écriture pour les gestes sur les cartes', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await retypeCardText(0, 0, 'Acheter du pain complet');
+      await requestRemovalOfCard(0, 1);
+      await clickOn('.confirm-remove-card .confirm-card .btn-confirm');
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+      await moveSelectedCard('down');
+
+      const writesOnGestures = writeCalls();
+
+      expect(writesOnGestures).toBe(0);
+      expect(kanbanService.saveKanbanWithColumns).not.toHaveBeenCalled();
+    });
+
+    it('T33.2 enregistre le nom, les colonnes et leurs cartes en un seul appel', async () => {
+      const typedName = 'Travaux du garage';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await typeName(typedName);
+      await clickOn('.btn-save');
+
+      const requestedSaves = saveCalls();
+      const requestedSave = requestedSaves[0] ?? null;
+      const savedOutline = lastSavedOutline();
+      const savedFirstColumn = savedCardsOf(0);
+      const savedSecondColumn = savedCardsOf(1);
+
+      expect(requestedSaves.length).toBe(1);
+      expect(requestedSave?.id).toBe(EXISTING_KANBAN.id);
+      expect(requestedSave?.name).toBe(typedName);
+      expect(savedOutline).toEqual([
+        { name: COLUMN_TO_DO.name, position: 0 },
+        { name: COLUMN_IN_PROGRESS.name, position: 1 },
+      ]);
+      expect(savedFirstColumn).toEqual([
+        { text: CARD_PAIN.text, position: 0, noteId: null },
+        { text: CARD_LAIT.text, position: 1, noteId: null },
+      ]);
+      expect(savedSecondColumn).toEqual([
+        { text: CARD_PEINDRE.text, position: 0, noteId: NOTE_PEINTURE.id },
+      ]);
+      expect(kanbanService.createKanban).not.toHaveBeenCalled();
+      expect(kanbanService.renameKanban).not.toHaveBeenCalled();
+    });
+
+    it("T33.3 (ajout) rend le retour questionnant après l'ajout d'une carte", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it("T33.3 (modification) rend le retour questionnant après la modification d'un texte", async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await retypeCardText(0, 0, 'Acheter du pain complet');
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T33.3 (déplacement) rend le retour questionnant après un déplacement', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await toggleMoveModeFrom(0);
+      await selectCard(0, 0);
+      await moveSelectedCard('down');
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T33.3 (retrait) rend le retour questionnant après un retrait de carte', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfCard(0, 0);
+      await clickOn('.confirm-remove-card .confirm-card .btn-confirm');
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T33.3 ((dé)liage) rend le retour questionnant après un (dé)liage de note', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await linkNoteTo(0, 0, NOTE_COURSES);
+      await clickOn('.btn-back');
+
+      const confirmPopupShown = isShown('.confirm-leave .confirm-backdrop');
+      const requestedNavigations = navigations();
+
+      expect(confirmPopupShown).toBe(true);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T33.4 rend le retour immédiat après un enregistrement réussi', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addCardToColumn(0, 'Acheter du beurre');
+      await clickOn('.btn-save');
+
+      const navigationsAfterSave = navigations();
+
+      await clickOn('.btn-back');
+
+      const confirmPopupAfterBack = isShown('.confirm-leave .confirm-backdrop');
+      const navigationsAfterBack = navigations();
+
+      expect(navigationsAfterSave).toEqual([KANBAN_LIST_ROUTE]);
+      expect(confirmPopupAfterBack).toBe(false);
+      expect(navigationsAfterBack).toEqual([KANBAN_LIST_ROUTE, KANBAN_LIST_ROUTE]);
+    });
+
+    it("T33.5 conserve l'écran et les cartes avec un message visible après un échec", async () => {
+      const typedText = 'Acheter du beurre';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      kanbanService.saveKanbanWithColumns.mockRejectedValue(new Error('Base indisponible'));
+
+      await addCardToColumn(0, typedText);
+      await clickOn('.btn-save');
+
+      const editorStillShown = isShown('.kanban-editor');
+      const errorMessage = normalizedTextOf('.action-error');
+      const textsInFirstColumn = cardTextsOf(0);
+      const textsInSecondColumn = cardTextsOf(1);
+      const requestedNavigations = navigations();
+
+      expect(editorStillShown).toBe(true);
+      expect(errorMessage).toBe(SAVE_FAILED_MESSAGE);
+      expect(textsInFirstColumn).toEqual([CARD_PAIN.text, CARD_LAIT.text, typedText]);
+      expect(textsInSecondColumn).toEqual([CARD_PEINDRE.text]);
+      expect(requestedNavigations).toEqual([]);
+    });
+
+    it('T33.6 laisse réessayer après un échec, la modification restant en attente', async () => {
+      const typedText = 'Acheter du beurre';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      kanbanService.saveKanbanWithColumns.mockRejectedValueOnce(new Error('Base indisponible'));
+
+      await addCardToColumn(0, typedText);
+      await clickOn('.btn-save');
+
+      const errorAfterFailure = normalizedTextOf('.action-error');
+
+      await clickOn('.btn-save');
+
+      const requestedSaves = saveCalls();
+      const savedCards = savedCardsOf(0);
+      const savedTexts = savedCards.map((card: SavedCardOutline): string => card.text);
+      const errorAfterRetry = isShown('.action-error');
+      const requestedNavigations = navigations();
+
+      expect(errorAfterFailure).toBe(SAVE_FAILED_MESSAGE);
+      expect(requestedSaves.length).toBe(2);
+      expect(savedTexts).toEqual([CARD_PAIN.text, CARD_LAIT.text, typedText]);
+      expect(errorAfterRetry).toBe(false);
+      expect(requestedNavigations).toEqual([KANBAN_LIST_ROUTE]);
+    });
+
+    it("T33.7 donne une liste de cartes vide à une colonne ajoutée par l'écran", async () => {
+      const addedName = 'Imprévus';
+
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await addColumn(addedName);
+      await clickOn('.btn-save');
+
+      const savedColumns = lastSavedColumns();
+      const addedColumn = savedColumns[2] ?? null;
+
+      expect(savedColumns.length).toBe(3);
+      expect(addedColumn?.name).toBe(addedName);
+      expect(addedColumn?.cards).toEqual([]);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 34 — Retrait d'une liste qui porte des cartes (cartes)
+  // ---------------------------------------------------------------------------
+  describe("Retrait d'une liste qui porte des cartes", () => {
+    it('T34.1 mentionne les cartes qui partiront dans la popup de retrait de la liste', async () => {
+      await openBoardWithColumns(TWO_COLUMNS_WITH_CARDS);
+      await requestRemovalOfColumnAt(0);
+
+      const confirmPopupShown = isShown('.confirm-remove-column .confirm-backdrop');
+      const confirmMessage = normalizedTextOf('.confirm-remove-column .confirm-message');
+
+      expect(confirmPopupShown).toBe(true);
+      expect(confirmMessage).toContain(`« ${COLUMN_TO_DO.name} »`);
+      expect(confirmMessage).toMatch(/cartes/i);
     });
   });
 });

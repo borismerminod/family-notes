@@ -14,9 +14,16 @@
   /* Palette (aligned on NOTE_COLOR_PALETTE / block-style.model.ts) */
   --surface: #ffffff;
   --surface-2: #f2f2f7;
+  /* Surface of the list itself, **darker** than the page it sits on ('--bg: #f2f2f7' of
+     kanban-editor.css): a list reads as a recess holding white cards, and not as a white sheet
+     on a grey page. In dark mode the page is already black, so the list keeps the surface it had
+     and the hierarchy is carried by the cards, which are lighter than it. */
+  --column-surface: #e5e5ea;
   --text: #1c1c1e;
   --text-2: #8e8e93;
-  --separator: #e5e5ea;
+  /* One step darker than the shared '#e5e5ea', which is the colour of the list itself now: a
+     separator the colour of its own surface would be no separator at all. */
+  --separator: #d1d1d6;
   --accent: #007aff;
   --danger: #ff3b30;
   --radius: 16px;
@@ -29,20 +36,21 @@
   :host {
     --surface: #1c1c1e;
     --surface-2: #2c2c2e;
+    --column-surface: #1c1c1e;
     --text: #ffffff;
     --text-2: #98989f;
     --separator: #38383a;
   }
 }
 
-/* The list reads as a card on the page: its own surface, never the colour of the background it
-   sits on — '--surface-2' is the very colour of the editor page, which made the body vanish. */
+/* The list reads as a recess on the page: its own surface, darker than the background it sits on,
+   never the colour of that background — which would make the body vanish. */
 .kanban-column {
   display: flex;
   flex-direction: column;
   height: 100%;
   border-radius: var(--radius);
-  background: var(--surface);
+  background: var(--column-surface);
   overflow: hidden;
 }
 
@@ -54,7 +62,7 @@
   gap: 4px;
   padding: 8px 8px 8px 12px;
   border-bottom: 1px solid var(--separator);
-  background: var(--surface);
+  background: var(--column-surface);
 }
 
 .column-name {
@@ -86,11 +94,121 @@
   font-family: inherit;
 }
 
-/* ---- Area reserved for the cards of the next batch (D-L21) ---- */
+/* ---- The pile of cards, which scrolls vertically (D-C27) ---- */
+/* The padding is what keeps the cards off the edges of the list, and the gap what keeps them off
+   each other: a card is a tile laid **in** the list, so the darker surface has to show all around
+   it. Both live here rather than on the card itself, which does not know what lays it out. */
 .column-cards {
   flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
   min-height: 120px;
+  padding: 8px;
   overflow-y: auto;
+}
+
+/* ---- Body: the pile of cards, flanked by the ← → card arrows (D-C26) ---- */
+.column-body {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  min-height: 0;
+}
+
+/* ---- Footer: the ↑ ↓ card arrows, kept out of the scrolling area (D-C27) ---- */
+.column-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid var(--separator);
+  background: var(--column-surface);
+}
+
+/* The four card arrows, a family of their own (D-P5): they move a **card**, where the '.btn-move'
+   of the editor move a **list**. Flat and quiet, so the card they act on stays what the eye goes
+   to first. */
+.btn-card-move {
+  flex: 0 0 auto;
+  width: 32px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-card-move-up,
+.btn-card-move-down {
+  height: 32px;
+  width: 44px;
+}
+
+.btn-card-move:disabled {
+  color: var(--text-2);
+  opacity: .4;
+  cursor: default;
+}
+
+/* The add button of the list, the twin of the '.btn-add-column' of the editor: the accent colour
+   and the « + » of the project, sized as a touch target. */
+.btn-add-card {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The « déplacer » button, quiet like the arrows: it opens a mode, it does not create anything,
+   so it does not compete with the add button for the eye. It reads as pressed while the mode is
+   on, the state coming from the input. */
+.btn-toggle-move-mode {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 32px;
+  border: none;
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--accent);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-toggle-move-mode[aria-pressed='true'] {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+/* ---- Empty state of the list (D-P6): the invitation to create a first card ---- */
+/* Narrower than the empty state of the board — a list is a column, not a page — so it carries no
+   icon and leans on its text alone. It takes the place the cards would have had, the area above
+   it collapsing to nothing while the list is empty. */
+.empty.no-cards {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 12px;
+  text-align: center;
+  color: var(--text-2);
+}
+
+.empty.no-cards p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 /* ---- Round icon buttons, as on the board list ---- */

@@ -107,6 +107,13 @@ demandent en ouverture **qui lance la commande de test**.
 - **SOLID** et **clean code** : une responsabilité par classe / fonction ;
 - **nommage porteur de sens** pour les fonctions, variables, classes et attributs — le nom doit
   dire ce que la chose fait ou contient ;
+- **typage explicite partout**, y compris quand TypeScript saurait l'inférer : variables locales
+  (`const location: CardLocation | null = …`), compteurs de boucle (`let i: number = 0`),
+  paramètres **et** type de retour des callbacks
+  (`cards.filter((card: KanbanCard): boolean => …)`). Le type écrit fait partie de la
+  documentation que lit l'humain : dans un module où tout se ressemble — une composition, une
+  liste de cartes, un rang —, c'est lui qui dit laquelle des trois un nom porte, sans avoir à
+  remonter à la fonction appelée ;
 - **le code est relu par un humain : la lisibilité prime sur la concision** ;
 - **éviter les appels de fonction imbriqués** : passer par des **variables intermédiaires**
   nommées, y compris dans les tests ;

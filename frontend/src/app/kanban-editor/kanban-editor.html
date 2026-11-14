@@ -83,9 +83,71 @@
         <div class="column-slot">
           <app-kanban-column
             [column]="column"
+            [selectedCardId]="selectedCardId()"
+            [moveMode]="moveMode()"
+            [canMoveCardLeft]="canMoveSelectedCardLeft()"
+            [canMoveCardRight]="canMoveSelectedCardRight()"
             (renamed)="onRenameColumn(column.id, $event)"
             (removeRequested)="onRemoveColumn(column)"
+            (addCardRequested)="onStartAddCard(column.id)"
+            (cardTextChanged)="onCardTextChanged($event)"
+            (cardRemoveRequested)="onCardRemoveRequested($event)"
+            (cardNoteRequested)="onCardNoteRequested($event)"
+            (cardNoteOpenRequested)="onNoteOpenRequested($event)"
+            (moveModeToggled)="onToggleMoveMode()"
+            (cardSelected)="onCardSelected($event)"
+            (cardMoveRequested)="onCardMoveRequested($event)"
           />
+
+          <!-- Draft of a new card, rendered in the slot of the list it targets and **outside** the
+               composition: a card enters the board only when the draft is validated (D-C29). It is
+               named apart from the '.new-column' of a new list, both being allowed to be open at
+               the same time (D-EC1). -->
+          @if (addingCardInColumnId() === column.id) {
+            <div class="new-card">
+              <label class="sr-only" [for]="'kanban-new-card-text-' + column.id">
+                Texte de la nouvelle carte
+              </label>
+              <input
+                [id]="'kanban-new-card-text-' + column.id"
+                type="text"
+                class="new-card-text"
+                [value]="newCardText()"
+                (input)="newCardText.set($any($event.target).value)"
+              />
+
+              <!-- Two buttons validate or give the draft up, the soft keyboard of a phone putting
+                   'Entrée' and 'Échap' out of reach — the reason D-EC2 already gave. -->
+              <button
+                type="button"
+                class="btn-card-action btn-new-card-confirm"
+                (click)="onConfirmAddCard()"
+                aria-label="Valider la nouvelle carte"
+              >
+                ✓
+              </button>
+
+              <button
+                type="button"
+                class="btn-card-action btn-new-card-cancel"
+                (click)="onCancelAddCard()"
+                aria-label="Abandonner l'ajout d'une carte"
+              >
+                ✗
+              </button>
+
+              <!-- The reference control of the draft: a card may be linked before it exists, the
+                   creation and a later linking going through the same place (D-C36, E156). -->
+              <button
+                type="button"
+                class="btn-new-card-note"
+                (click)="onNoteRequestedForDraft()"
+                aria-label="Choisir la note liée à la nouvelle carte"
+              >
+                {{ newCardNote()?.title ?? 'Lier une note' }}
+              </button>
+            </div>
+          }
 
           <div class="column-move">
             <button
@@ -171,12 +233,28 @@
        case — and a future style — can aim at one popup rather than at whichever is open. -->
   <app-confirm-dialog
     class="confirm-remove-column"
-    [message]="'Retirer la liste « ' + (columnToRemove()?.name ?? '') + ' » ?'"
+    [message]="removeColumnMessage()"
     [(open)]="removeConfirmOpen"
     confirmLabel="Retirer"
     cancelLabel="Annuler"
     (answered)="onRemoveConfirmed($event)"
   />
+
+  <!-- Removing a card: a third instance of the very popup the deletions use, naming the card at
+       stake (D-C28). Its class tells it apart from the two others, so a case — and a future
+       style — can aim at one popup rather than at whichever is open. -->
+  <app-confirm-dialog
+    class="confirm-remove-card"
+    [message]="'Retirer la carte « ' + (cardToRemove()?.text ?? '') + ' » ?'"
+    [(open)]="removeCardConfirmOpen"
+    confirmLabel="Retirer"
+    cancelLabel="Annuler"
+    (answered)="onRemoveCardConfirmed($event)"
+  />
+
+  <!-- The note picker, one single instance for the whole screen, rendered at all times with its
+       open state driving the popup — exactly as the confirmation popups are (D-C31, D-EC7). -->
+  <app-note-picker [(open)]="notePickerOpen" (selected)="onNoteSelected($event)" />
 
   <!-- Giving up an unsaved name or composition: the very popup the deletions use (US4, D2). -->
   <app-confirm-dialog

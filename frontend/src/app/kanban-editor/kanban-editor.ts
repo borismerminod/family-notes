@@ -1,10 +1,44 @@
 import { Component, OnInit, computed, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
+import { CardTextChange } from '../core/models/card-text-change.model';
+import { KanbanCard } from '../core/models/kanban-card.model';
 import { KanbanColumn } from '../core/models/kanban-column.model';
 import { KanbanSaveResult } from '../core/models/kanban-save-result.model';
+import { Note } from '../core/models/note.model';
 import { KanbanService } from '../core/services/kanban-service';
+import {
+  CardLocation,
+  MoveDirection,
+  addCardTo,
+  canMoveCard,
+  compositionSignature,
+  locateCard,
+  moveCardDown,
+  moveCardToNextColumn,
+  moveCardToPreviousColumn,
+  moveCardUp,
+  removeCard,
+  replaceCardText,
+  setCardNote,
+} from '../core/services/kanban-composition';
 import { ConfirmDialog } from '../core/components/confirm-dialog/confirm-dialog';
+import { NotePicker } from '../core/components/note-picker/note-picker';
 import { KanbanColumnPanel } from '../kanban-column/kanban-column';
+
+/**
+ * The gesture of the pure module each arrow asks for (D-C18). A table rather than a `switch`: the
+ * four directions are one single mapping, which is also what the module itself does to answer
+ * whether a move is possible.
+ */
+const MOVE_CARD_GESTURE_BY_DIRECTION: Record<
+  MoveDirection,
+  (columns: KanbanColumn[], cardId: string) => KanbanColumn[]
+> = {
+  up: moveCardUp,
+  down: moveCardDown,
+  left: moveCardToPreviousColumn,
+  right: moveCardToNextColumn,
+};
 
 /** Name a board falls back on when the name field is left empty (D-E2). */
 const DEFAULT_NAME = 'Sans titre';
@@ -42,13 +76,19 @@ const COLUMNS_SAVE_FAILED_MESSAGE =
  * per column of the displayed composition, horizontally and in order (D-L21). It replaces the
  * ghost column the previous batch showed there, D-E11 being withdrawn.
  *
- * Built against `PLAN_TESTS_KANBAN_EDITION.md`, part B (groups 2 to 10), and
- * `PLAN_TESTS_KANBAN_EDITION_LISTES.md`, groups 6 to 12.
+ * Each list carries its **cards** inside that composition — there is no signal of their own
+ * (D-C18) — and every gesture on them is one call to the pure `kanban-composition` module whose
+ * result is reposed in {@link columns}. The draft of a card being typed is the single exception:
+ * it stays **out** of the composition until it is validated (D-C29).
+ *
+ * Built against `PLAN_TESTS_KANBAN_EDITION.md`, part B (groups 2 to 10),
+ * `PLAN_TESTS_KANBAN_EDITION_LISTES.md`, groups 6 to 12, and `PLAN_TESTS_KANBAN_CARTES.md`,
+ * groups 27 to 34.
  */
 @Component({
   selector: 'app-kanban-editor',
   standalone: true,
-  imports: [ConfirmDialog, KanbanColumnPanel],
+  imports: [ConfirmDialog, NotePicker, KanbanColumnPanel],
   templateUrl: './kanban-editor.html',
   styleUrl: './kanban-editor.css',
 })
@@ -89,6 +129,29 @@ export class KanbanEditor implements OnInit {
 
   /** Name typed in the field of the new list, as it is typed: nothing is cleaned up here (D-L17). */
   newColumnName = signal<string>('');
+
+  /**
+   * Identifier of the list the draft of a new card targets, `null` when no card is being typed.
+   * The draft is rendered in the slot of **that** list, and it lives here rather than in the
+   * composition: a card momentarily carrying an empty text would make the whole save fail
+   * (D-C29).
+   */
+  addingCardInColumnId = signal<string | null>(null);
+
+  /** Text typed in the field of the draft, as it is typed: nothing is cleaned up here (D-C30). */
+  newCardText = signal<string>('');
+
+  /** Note chosen for the card being typed, posed on it when the draft is validated (D-C29). */
+  newCardNote = signal<Note | null>(null);
+
+  /** Whether the popup that picks the note of a card is open (D-C31). */
+  notePickerOpen = signal<boolean>(false);
+
+  /**
+   * Identifier of the card the open picker answers for, `null` when it answers for the **draft**
+   * of a new card — which is a target like any other (D-C36).
+   */
+  cardAwaitingNote = signal<string | null>(null);
 
   /**
    * Name the screen started from — empty on a brand new board, the stored name in edit mode. It is
@@ -136,8 +199,45 @@ export class KanbanEditor implements OnInit {
   /** Whether the popup confirming the removal of a list is open (US4 of the lists batch). */
   removeConfirmOpen = signal<boolean>(false);
 
+  /**
+   * Card whose removal the user asked for, `null` when no removal is being confirmed. Kept apart
+   * from the composition: the card is only dropped once the popup has been confirmed (D-C28), and
+   * it is held whole so the popup can name it.
+   */
+  cardToRemove = signal<KanbanCard | null>(null);
+
+  /**
+   * Whether the popup confirming the removal of a card is open — a **third** instance of
+   * `ConfirmDialog`, with its own state: its question and what follows it differ from those of
+   * the two others (D-C28).
+   */
+  removeCardConfirmOpen = signal<boolean>(false);
+
   /** Whether the popup warning that the typed name is about to be lost is open (US4). */
   confirmOpen = signal<boolean>(false);
+
+  /**
+   * Identifier of the note the user asked to open while changes were pending, `null` when no such
+   * exit is waiting for an answer. It is what routes the answer of the **shared** abandon popup
+   * towards the note rather than towards the board list (D-C38), and declining must set it back
+   * to `null`: a « Retour » afterwards would otherwise jump to the note (E161).
+   */
+  pendingNoteNavigationId = signal<string | null>(null);
+
+  /**
+   * Whether the board is in move mode, where touching a card selects it instead of opening its
+   * text entry (US7). The mode is worth the **whole board** whichever list it was toggled from:
+   * that is what lets a card cross the lists without being deselected (D-C23).
+   */
+  moveMode = signal<boolean>(false);
+
+  /**
+   * Identifier of the single selected card of the whole board, `null` when none is. One single
+   * signal rather than a flag per card: `US7` holds the selection to one card across the board,
+   * and the selection being held **by identifier** is what makes it survive a move, the
+   * composition being replaced by a new one at each notch (D-C23).
+   */
+  selectedCardId = signal<string | null>(null);
 
   /**
    * Whether what the screen holds differs from what it started from — the board name, or its
@@ -149,6 +249,33 @@ export class KanbanEditor implements OnInit {
     const nameChanged = this.name().trim() !== this.initialName().trim();
     return nameChanged || this.hasColumnChanges();
   });
+
+  /**
+   * Question the popup asks before a list is removed. A list that **carries cards** says so: the
+   * cards leave with it, which the user cannot guess from a question about a list alone (US10,
+   * D-C40). An empty list keeps the plain question — warning about cards that do not exist would
+   * read as a bug.
+   */
+  removeColumnMessage = computed(() => {
+    const columnAimedAt = this.columnToRemove();
+    const nameAimedAt = columnAimedAt?.name ?? '';
+    const question = `Retirer la liste « ${nameAimedAt} » ?`;
+    const cardsCarried = columnAimedAt?.cards ?? [];
+
+    if (cardsCarried.length === 0) {
+      return question;
+    }
+    return `${question} Ses cartes partiront avec elle.`;
+  });
+
+  /**
+   * Whether the selected card may go to the list on the left. It is computed here and handed to
+   * the lists, which ignore their own rank in the board (D-C25).
+   */
+  canMoveSelectedCardLeft = computed(() => this.canMoveSelectedCard('left'));
+
+  /** Whether the selected card may go to the list on the right, decided here too (D-C25). */
+  canMoveSelectedCardRight = computed(() => this.canMoveSelectedCard('right'));
 
   /**
    * Identifier of the board being edited, or `null` in create mode (D-E8). Read once from the route
@@ -240,7 +367,7 @@ export class KanbanEditor implements OnInit {
    * brand new identifier the screen generates itself — it has to designate that list before it
    * exists in the database (D-L11).
    *
-   * The name is the typed one cleaned up by {@link nameToStore}: that rule is applied at the
+   * The name is the typed one cleaned up by {@link textToStore}: that rule is applied at the
    * **validation** of the field, never while typing (D-L17).
    *
    * The positions are renumbered like after a removal or a move (D-L12), rather than the new list
@@ -248,16 +375,22 @@ export class KanbanEditor implements OnInit {
    * hole in its positions by an interrupted save (D-L13) would otherwise get two lists at the
    * same rank, and nothing in the schema objects to it (D-L6).
    *
+   * The list is added with an **explicit empty** list of cards, never `undefined` (D-C9): the
+   * save reads that difference as « this list keeps no card » against « I know nothing of its
+   * cards », and a list the screen has just created is in the first case — it is loaded, and it
+   * holds none (E168).
+   *
    * Nothing is written: the composition is from now on waiting to be saved (D-L1). The field is
    * emptied and left open, so several lists can be added in a row (US2).
    */
   onAddColumn(): void {
-    const nameToStore = this.nameToStore(this.newColumnName());
+    const nameToStore = this.textToStore(this.newColumnName());
     const columnsShown = this.columns();
     const columnToAdd: KanbanColumn = {
       id: crypto.randomUUID(),
       name: nameToStore,
       position: columnsShown.length,
+      cards: [],
     };
     const renumberedColumns = this.reindexColumns([...columnsShown, columnToAdd]);
 
@@ -278,7 +411,7 @@ export class KanbanEditor implements OnInit {
    * @param typedName Name as the user typed it in the header of that list.
    */
   onRenameColumn(id: string, typedName: string): void {
-    const nameToStore = this.nameToStore(typedName);
+    const nameToStore = this.textToStore(typedName);
     const columnsShown = this.columns();
     const renamedColumns = columnsShown.map((column) => {
       const isListToRename = column.id === id;
@@ -286,6 +419,235 @@ export class KanbanEditor implements OnInit {
     });
 
     this.columns.set(renamedColumns);
+  }
+
+  /**
+   * Opens the draft of a new card in the slot of the list that asked for it, empty (D-C29). The
+   * draft is not part of the composition: nothing is added to the board until it is validated.
+   * @param columnId Identifier of the list the card will join.
+   */
+  onStartAddCard(columnId: string): void {
+    this.newCardText.set('');
+    this.newCardNote.set(null);
+    this.addingCardInColumnId.set(columnId);
+  }
+
+  /**
+   * Opens the picker for the **draft** of a new card, which can be linked before it exists
+   * (E156): creating a card and linking one later go through the same place (D-C36).
+   */
+  onNoteRequestedForDraft(): void {
+    this.cardAwaitingNote.set(null);
+    this.notePickerOpen.set(true);
+  }
+
+  /**
+   * Opens the picker for one card of the composition, which is what its reference control asks
+   * for: the card carries no popup of its own (D-C36).
+   * @param cardId Identifier of the card to link or to unlink.
+   */
+  onCardNoteRequested(cardId: string): void {
+    this.cardAwaitingNote.set(cardId);
+    this.notePickerOpen.set(true);
+  }
+
+  /**
+   * Handles the answer of the picker: the chosen note — or `null` for the explicit « Aucune
+   * note » that unlinks (D-C33, D-C35) — is posed on the target the picker was opened for, the
+   * draft of a new card being a target like any other, and the popup closes. Giving the picker up
+   * emits nothing, so a reference stays as it was without anything to handle here (E155).
+   *
+   * Nothing is written: the composition is waiting to be saved (H-C2), and the note itself is
+   * never touched.
+   * @param chosenNote The note to reference, or `null` to carry none.
+   */
+  onNoteSelected(chosenNote: Note | null): void {
+    const cardAimedAt = this.cardAwaitingNote();
+    this.notePickerOpen.set(false);
+
+    if (cardAimedAt === null) {
+      this.newCardNote.set(chosenNote);
+      return;
+    }
+
+    const relinkedComposition = setCardNote(this.columns(), cardAimedAt, chosenNote);
+    this.columns.set(relinkedComposition);
+  }
+
+  /**
+   * Adds the card being typed at the **last** position of the list it targets, under a brand new
+   * identifier the screen generates itself — it has to designate that card before it exists in
+   * the database (D-C20). The positions of that list are renumbered by the pure module, so they
+   * stay contiguous and start back from 0 (D-C19).
+   *
+   * The text is the typed one cleaned up by {@link textToStore} — border spaces dropped, fallback
+   * on 'Sans titre' — a rule applied at the **validation** of the field and never while typing
+   * (D-C30). The position carried by the forged card is the one the pure module overwrites when
+   * it renumbers the list, so it is given its rank at the only place that decides ranks.
+   *
+   * Nothing is written: the composition is from now on waiting to be saved (D-C29, H-C2). The
+   * field is emptied and left open, so several cards can be added in a row (US2).
+   */
+  onConfirmAddCard(): void {
+    const targetColumnId = this.addingCardInColumnId();
+    if (targetColumnId === null) {
+      return;
+    }
+
+    const textToStore = this.textToStore(this.newCardText());
+    const cardToAdd: KanbanCard = {
+      id: crypto.randomUUID(),
+      text: textToStore,
+      note: this.newCardNote(),
+      position: 0,
+    };
+    const grownComposition = addCardTo(this.columns(), targetColumnId, cardToAdd);
+
+    this.columns.set(grownComposition);
+    this.newCardText.set('');
+  }
+
+  /**
+   * Replaces the text of one card of the displayed composition, and that one only: the column
+   * relays the text **as it was typed** along with the card that validated it (D-C22), the
+   * cleaning up and the fallback on 'Sans titre' being applied here, in a single place (D-C30).
+   *
+   * The card keeps its position, its list and its reference (US3), and the pure module is what
+   * guarantees it (E101). Nothing is written: the composition is waiting to be saved (H-C2).
+   * @param change The card that validated its entry, and the text as the user typed it.
+   */
+  onCardTextChanged(change: CardTextChange): void {
+    const textToStore = this.textToStore(change.text);
+    const retypedComposition = replaceCardText(this.columns(), change.cardId, textToStore);
+
+    this.columns.set(retypedComposition);
+  }
+
+  /**
+   * Handles the opening of a note a card asked for by its title. **Without** a pending change the
+   * note opens straight away; **with** one, the exit goes through the abandon popup already in
+   * place, this being an exit of the screen like the back button (US5, US10, D-C38).
+   *
+   * The card only emits a request: deciding belongs here, which is the whole reason the title is
+   * not an anchor (D-C37) — a `routerLink` would navigate without asking and the guard would be
+   * lost.
+   * @param noteId Identifier of the referenced note to open.
+   */
+  onNoteOpenRequested(noteId: string): void {
+    if (this.hasPendingChanges()) {
+      this.pendingNoteNavigationId.set(noteId);
+      this.confirmOpen.set(true);
+      return;
+    }
+    this.goToNote(noteId);
+  }
+
+  /**
+   * Flips the move mode, whichever list asked for it: the mode belongs to the board (D-C23).
+   * **Leaving** the mode drops the selection, which hands the touch of a card back its role of
+   * opening the text entry (US7).
+   *
+   * The mode changes nothing by itself: entering it, selecting a card and leaving is not a
+   * pending change (D-C39, E151).
+   */
+  onToggleMoveMode(): void {
+    const wasInMoveMode = this.moveMode();
+    if (wasInMoveMode) {
+      this.selectedCardId.set(null);
+    }
+    this.moveMode.set(!wasInMoveMode);
+  }
+
+  /**
+   * Grants the selection a card asked for by touching its body in move mode: the previous one
+   * loses it, even in another list, there being one single selected card on the whole board
+   * (D-C23, E148).
+   * @param cardId Identifier of the card that was touched.
+   */
+  onCardSelected(cardId: string): void {
+    this.selectedCardId.set(cardId);
+  }
+
+  /**
+   * Moves the selected card one notch in the asked direction, by the matching gesture of the pure
+   * module, and reposes the result in the composition (D-C18). The module leaves the composition
+   * untouched at the ends of a list or of the board, which is the belt of the disabled arrows
+   * (E106 to E110).
+   *
+   * The card **stays selected**, the selection being held by identifier: the notches can be
+   * chained without selecting it again, even once it has changed list (E150). Nothing is written
+   * (H-C2).
+   * @param direction Where the selected card is asked to go.
+   */
+  onCardMoveRequested(direction: MoveDirection): void {
+    const cardToMoveId = this.selectedCardId();
+    if (cardToMoveId === null) {
+      return;
+    }
+
+    const moveGesture = MOVE_CARD_GESTURE_BY_DIRECTION[direction];
+    const movedComposition = moveGesture(this.columns(), cardToMoveId);
+    this.columns.set(movedComposition);
+  }
+
+  /**
+   * Handles the removal a card asked for through its own trash: the card is looked up in the
+   * composition so the popup can name it, and the confirmation opens. The panels only emit a
+   * request — the popup and the composition belong here (D-C28) — so nothing is removed yet, and
+   * nothing written.
+   * @param cardId Identifier of the card whose trash was touched.
+   */
+  onCardRemoveRequested(cardId: string): void {
+    const location: CardLocation | null = locateCard(this.columns(), cardId);
+    if (location === null) {
+      return;
+    }
+
+    this.cardToRemove.set(location.card);
+    this.removeCardConfirmOpen.set(true);
+  }
+
+  /**
+   * Handles the answer of the card removal popup: confirming drops that card — and that one only,
+   * designated by its identifier so two cards carrying the same text never get mixed up (US2) —
+   * and the pure module renumbers its list so the positions stay contiguous (E104). Declining,
+   * which the popup also reports for a click outside of it and for the Escape key, keeps the card
+   * where it is.
+   *
+   * A card that was **selected** takes the selection down with it: an identifier designating a
+   * card that is no longer in the composition would be a state saying something false, and the
+   * arrows read it (D-C23).
+   *
+   * The referenced note is never touched: removing a card is not removing a note (E146). Nothing
+   * is written either way: quitting the screen without saving leaves the card in the database
+   * (H-C2).
+   * @param confirmed True when the user confirmed the removal, false when they declined.
+   */
+  onRemoveCardConfirmed(confirmed: boolean): void {
+    const cardAimedAt = this.cardToRemove();
+    this.cardToRemove.set(null);
+
+    if (!confirmed || cardAimedAt === null) {
+      return;
+    }
+
+    const wasSelected = this.selectedCardId() === cardAimedAt.id;
+    if (wasSelected) {
+      this.selectedCardId.set(null);
+    }
+
+    const shrunkComposition = removeCard(this.columns(), cardAimedAt.id);
+    this.columns.set(shrunkComposition);
+  }
+
+  /**
+   * Gives the draft of a card up: the field closes and the composition is left untouched — the
+   * draft never entered it (D-C29, E140). Nothing is written either.
+   */
+  onCancelAddCard(): void {
+    this.newCardText.set('');
+    this.newCardNote.set(null);
+    this.addingCardInColumnId.set(null);
   }
 
   /** Gives the add up: the field closes and the composition is left untouched (US2). */
@@ -367,9 +729,18 @@ export class KanbanEditor implements OnInit {
    * @param confirmed True when the user confirmed leaving, false when they declined.
    */
   onLeaveConfirmed(confirmed: boolean): void {
-    if (confirmed) {
-      this.goToList();
+    const noteToOpenId = this.pendingNoteNavigationId();
+    this.pendingNoteNavigationId.set(null);
+
+    if (!confirmed) {
+      return;
     }
+
+    if (noteToOpenId !== null) {
+      this.goToNote(noteToOpenId);
+      return;
+    }
+    this.goToList();
   }
 
   /**
@@ -383,9 +754,18 @@ export class KanbanEditor implements OnInit {
     }
   }
 
-  /** Goes back to the board list, the single exit of this screen (D-E1, D-E4, US4). */
+  /** Goes back to the board list, the main exit of this screen (D-E1, D-E4, US4). */
   goToList(): void {
     this.router.navigate(['/kanban']);
+  }
+
+  /**
+   * Opens one note in the notes editor, which is the second exit of this screen (US5). Nothing is
+   * saved on the way out: the composition stays as it is in the database (US10).
+   * @param noteId Identifier of the note to open.
+   */
+  private goToNote(noteId: string): void {
+    this.router.navigate(['/notes/edit', noteId]);
   }
 
   /**
@@ -446,28 +826,40 @@ export class KanbanEditor implements OnInit {
   }
 
   /**
+   * Tells whether the selected card may go one notch in that direction, the pure module being
+   * the one that answers so the availability of an arrow and the gesture behind it can never
+   * drift apart (E113). Nothing selected means no move.
+   * @param direction The direction asked about.
+   * @returns True when the move would change the composition.
+   */
+  private canMoveSelectedCard(direction: MoveDirection): boolean {
+    const selectedId = this.selectedCardId();
+    if (selectedId === null) {
+      return false;
+    }
+    return canMoveCard(this.columns(), selectedId, direction);
+  }
+
+  /**
    * Tells whether the displayed composition differs from the one the screen started from, which
-   * is what each of the four gestures makes true (US7). A different number of lists says it, and
-   * so does, at a same rank, a different **identifier** — an add, a removal or a move — or a
-   * different cleaned up **name** — a rename. The position is left out of the comparison: it is
-   * redundant with the rank (D-L12), and revalidating the very same name must not look like a
-   * change.
+   * is what each of the gestures on a list **and** on a card makes true (US7, US10). The two
+   * compositions are compared through the **signature** the pure module builds (D-C39): the
+   * identifier, the name and the position of each list, and the identifier, the text, the
+   * **note identifier** and the position of each of its cards.
+   *
+   * Three things that signature leaves out, and each on purpose: the **content** of a referenced
+   * note, which would make the comparison costly and would see a note renamed elsewhere read as
+   * a change to the board; the **selection**; and the **move mode** — entering the mode,
+   * selecting a card and leaving must count for nothing (E151).
+   *
+   * Names and texts enter it as they are **stored**, the cleaning up happening at the validation
+   * of each field (D-C30), so revalidating the very same name or text is not a change.
    * @returns True when the composition is waiting to be saved.
    */
   private hasColumnChanges(): boolean {
-    const columnsShown = this.columns();
-    const columnsStartedFrom = this.initialColumns();
-
-    if (columnsShown.length !== columnsStartedFrom.length) {
-      return true;
-    }
-
-    return columnsShown.some((column, index) => {
-      const columnStartedFrom = columnsStartedFrom[index];
-      const identifierChanged = column.id !== columnStartedFrom.id;
-      const nameChanged = column.name.trim() !== columnStartedFrom.name.trim();
-      return identifierChanged || nameChanged;
-    });
+    const signatureShown = compositionSignature(this.columns());
+    const signatureStartedFrom = compositionSignature(this.initialColumns());
+    return signatureShown !== signatureStartedFrom;
   }
 
   /**
@@ -504,24 +896,26 @@ export class KanbanEditor implements OnInit {
   }
 
   /**
-   * Cleans a typed name up for storage: leading and trailing spaces are dropped, inner spaces
-   * being part of the name, and a name empty once cleaned falls back to 'Sans titre'. One single
-   * rule for the board name (D-E2) and for a list name (D-L17), which is what keeps the two from
-   * drifting apart. An empty name therefore never reaches the data source, whose own refusal
-   * stays a safety net (D-E10).
-   * @param typedName The name as the user typed it.
-   * @returns The name to store.
+   * Cleans a typed text up for storage: leading and trailing spaces are dropped, inner spaces
+   * being part of it, and a text empty once cleaned falls back to 'Sans titre'. One single rule
+   * for the board name (D-E2), for a list name (D-L17) and for the text of a card (D-C30), which
+   * is what keeps the three from drifting apart. An empty value therefore never reaches the data
+   * source, whose own refusal stays a safety net (D-E10, D-C12).
+   *
+   * It is applied at the **validation** of a field, never while typing.
+   * @param typedText The name or the text as the user typed it.
+   * @returns The value to store.
    */
-  private nameToStore(typedName: string): string {
-    const trimmedName = typedName.trim();
-    return trimmedName.length === 0 ? DEFAULT_NAME : trimmedName;
+  private textToStore(typedText: string): string {
+    const trimmedText = typedText.trim();
+    return trimmedText.length === 0 ? DEFAULT_NAME : trimmedText;
   }
 
   /**
-   * Gives the board name to store, cleaned up by {@link nameToStore}.
+   * Gives the board name to store, cleaned up by {@link textToStore}.
    * @returns The board name to store.
    */
   private nameToSave(): string {
-    return this.nameToStore(this.name());
+    return this.textToStore(this.name());
   }
 }

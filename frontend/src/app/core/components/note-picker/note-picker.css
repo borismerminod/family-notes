@@ -1,0 +1,168 @@
+/* ============================================================
+   Popup de sélection d'une note (mobile-first, style iOS)
+   Tokens alignés sur confirm-dialog.css (redéclarés car non globaux).
+   ============================================================ */
+
+:host {
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --separator: #e5e5ea;
+  --radius: 16px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 12px 40px rgba(0, 0, 0, .18);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --surface: #1c1c1e;
+    --text: #ffffff;
+    --separator: #38383a;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 12px 40px rgba(0, 0, 0, .6);
+  }
+}
+
+.note-picker-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom));
+  background: rgba(0, 0, 0, .35);
+}
+
+.note-picker-panel {
+  width: 100%;
+  max-width: 320px;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 20px;
+}
+
+.note-picker-title {
+  margin: 0 0 16px;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.btn-note-picker-close {
+  width: 100%;
+  min-height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: var(--separator);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* ---- Chargement propre à la popup (D-C32) ---- */
+.note-picker-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 0;
+}
+
+.note-picker-loading .spinner {
+  width: 32px;
+  height: 32px;
+  border: 4px solid var(--separator);
+  border-top-color: #0a84ff;
+  border-radius: 50%;
+  animation: note-picker-spin 1s linear infinite;
+}
+
+@keyframes note-picker-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Liste des notes proposées (E170) ---- */
+.note-picker-list {
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.note-option {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: none;
+  border-bottom: 1px solid var(--separator);
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.note-picker-list li:last-child .note-option {
+  border-bottom: none;
+}
+
+.note-option-title {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* ---- Échec de la lecture des notes, contenu dans la popup (E179) ---- */
+.note-picker-error {
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #ff453a 14%, transparent);
+  color: #ff453a;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---- Champ de recherche, filtre en mémoire sur le seul titre (D-C34) ---- */
+.note-picker-search {
+  width: 100%;
+  min-height: 44px;
+  margin: 0 0 12px;
+  padding: 0 12px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text);
+  font-size: 16px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.note-picker-search:focus {
+  outline: none;
+  border-color: #0a84ff;
+}
+
+/* ---- États vides de la popup (D-NP1) ---- */
+.empty {
+  padding: 24px 12px;
+  text-align: center;
+}
+
+.empty p {
+  margin: 0;
+  font-size: 14px;
+  opacity: .6;
+}
+
+/* ---- Le choix « Aucune note », en tête de liste (D-C35) ---- */
+.note-option-none {
+  font-weight: 600;
+  color: #0a84ff;
+}

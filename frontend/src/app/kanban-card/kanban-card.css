@@ -1,0 +1,211 @@
+/* ============================================================
+   One card of a kanban column — stylesheet (mobile-first)
+   Tokens aligned on kanban-column.css (redeclared, as they are
+   not global).
+
+   Icons: the project's own SVG files (frontend/public/icons) drawn
+   as masks, the way the column does it — no icon font is loaded.
+   ============================================================ */
+
+/* The width of a card is the business of the column that lays it out — nothing here sizes the
+   host, so a change of layout has one single place to happen. */
+:host {
+  /* Palette (aligned on NOTE_COLOR_PALETTE / block-style.model.ts) */
+  --surface: #ffffff;
+  --surface-2: #f2f2f7;
+  /* Surface of the card itself: **white**, on a list that is darker than the page
+     ('--column-surface' of kanban-column.css). The card is the thing the finger goes for, so it
+     is the lightest of the three layers — page, list, card. */
+  --card-surface: #ffffff;
+  /* Surface of the controls the card carries, one step **off** its own: they are tiles on the
+     card, so they must not share its colour. */
+  --card-control: #f2f2f7;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --danger: #ff3b30;
+  --radius: 12px;
+
+  display: block;
+  color: var(--text);
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --card-surface: #2c2c2e;
+    --card-control: #1c1c1e;
+    --text: #ffffff;
+    --text-2: #98989f;
+    --separator: #38383a;
+  }
+}
+
+/* A card reads as a tile inside the list, which is itself a darker surface: it takes the lightest
+   colour of the three layers so the two stay distinguishable. Its children wrap, which puts the
+   body — or the text entry — and the trash on one line, and sends the title of the note to the
+   line below. */
+.kanban-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 8px 8px 12px;
+  border-radius: var(--radius);
+  background: var(--card-surface);
+}
+
+/* The selected card of the board stands out by an accent ring, following the only selection marker
+   the project already has — '.category-list li.selected' of CategorySelector (D-PC4). */
+.kanban-card.selected {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/* ---- The body at rest, and the text entry that takes its place (D-PC1) ---- */
+
+/* The body is the touch target of the card at rest: it takes all the width the trash leaves, so
+   the whole card answers the finger, and carries no look of its own. */
+.card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 6px 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: text;
+}
+
+.card-text {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+ /* The field takes a **whole line** of its own, the three controls of the entry going to the one
+    below: sharing a line with them left a box too narrow to read the text being typed on a
+    phone. */
+.card-text-input {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 6px 8px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--card-control);
+  color: var(--text);
+  font-size: 15px;
+  font-family: inherit;
+}
+
+/* The title of the referenced note takes a line of its own, under the text: it looks like a link
+   — underlined, in the accent colour — and behaves like a request, the editor being the one that
+   navigates (D-C37). */
+.card-note-title {
+  flex: 0 0 100%;
+  min-width: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  text-decoration: underline;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---- Round icon buttons, as on the column header ---- */
+.btn-icon {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 17px;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.btn-icon .icon { width: 18px; height: 18px; }
+
+/* The buttons of the text entry are sized for a thumb, like those of the rename of a column, and
+   drawn as buttons rather than as a bare glyph. */
+.btn-text-confirm,
+.btn-text-cancel {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--card-control);
+  font-size: 20px;
+}
+
+.btn-text-confirm { color: var(--accent); }
+
+.btn-icon.btn-danger:active,
+.btn-icon.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.icon-trash { --icon: url("/icons/trash.svg"); }
+
+/* ---- Accessible-only label of the text entry ---- */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* The reference control takes a line of its own under the entry field and its two buttons: it is
+   a piece of text, not an icon, so it reads as what it does — show the linked note, or invite to
+   link one (D-C36). */
+/* The reference control shares the line of the two entry buttons, after them: « Valider, Annuler,
+   Lier une note » reads as the row of choices the entry offers, the field above being what they
+   act on. It takes the width those two leave, and is drawn as a control rather than as a bare
+   link — on that row, a naked text would not read as touchable. */
+.btn-card-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--card-control);
+  color: var(--accent);
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
