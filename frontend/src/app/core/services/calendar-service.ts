@@ -27,19 +27,26 @@ export class CalendarService extends SqliteService {
       date: row.date,
       start_time: row.start_time ?? '',
       end_time: row.end_time ?? '',
-      noteIds: row.note_ids ?? [],
+      noteIds: row.note_ids ?? row.noteIds ?? [],
     };
   }
 
   /**
-   * Retrieves every event of a given month.
-   * @param month_date The target month as a `YYYY-MM` string, matched against the event date.
-   * @returns A promise resolving to the events falling in that month.
+   * Retrieves every event whose civil date falls within the given inclusive range.
+   *
+   * The calendar grid always spans 42 real dates, some of which belong to the previous or next
+   * month. Events must therefore be fetched over the whole visible interval `[start, end]` rather
+   * than a single month, so that events on adjacent-month days are retrieved as well.
+   *
+   * Dates are compared as civil `YYYY-MM-DD` strings: ISO lexical ordering matches chronological
+   * order and no UTC conversion is applied, so an event never shifts to the previous or next day.
+   * @param range The inclusive interval `{ start, end }`, each a `YYYY-MM-DD` string.
+   * @returns A promise resolving to every event whose date lies within that interval.
    */
-  public async getEventsFromRangedDate(month_date: string): Promise<CalendarEvent[]> {
+  public async getEventsFromRangedDate(range: { start: string; end: string }): Promise<CalendarEvent[]> {
     return this.runQuery('Erreur lors de la récupération des événements', async () => {
-      const request = "SELECT * FROM events WHERE strftime('%Y-%m', date) = ?";
-      const res = await this.db.query(request, [month_date]);
+      const request = 'SELECT * FROM events WHERE date >= ? AND date <= ?';
+      const res = await this.db.query(request, [range.start, range.end]);
       const rows = res.values ?? [];
       return rows.map((row) => this.mapRowToEvent(row));
     });

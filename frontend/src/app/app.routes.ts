@@ -7,7 +7,7 @@ import { KanbanEditor } from './kanban-editor/kanban-editor';
 
 export const routes: Routes = [
   {
-    path: 'calendar/:selectedMonthDate',
+    path: 'calendar/:selectedMonth',
     component: Calendar
   },
   {

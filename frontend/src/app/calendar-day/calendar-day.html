@@ -1,11 +1,15 @@
 <div class="day-cell">
-    <span class="day-number">{{ dayDate.date | date:'dd/MM' }}</span>
+    <span class="day-number">{{ dayDate().date | date:'dd/MM' }}</span>
 
     <ul class="day-events">
-        @for (calendarEvent of dayDate.events; track calendarEvent.id) {
+        @for (calendarEvent of visibleEvents(); track calendarEvent.id) {
             <li class="event">
                 <span class="event-title">{{ calendarEvent.title }}</span>
             </li>
         }
     </ul>
+
+    @if (hiddenEventCount() > 0) {
+        <span class="more-events">+{{ hiddenEventCount() }} autres</span>
+    }
 </div>

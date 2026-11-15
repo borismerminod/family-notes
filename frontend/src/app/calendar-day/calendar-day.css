@@ -81,3 +81,16 @@
 
 /* jours hors mois : on atténue aussi les pastilles */
 :host(.other-month) .event { opacity: 0.5; }
+/* indicateur des événements masqués : hors de la liste, pour ne jamais être coupé */
+.more-events {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  padding: 0 8px;
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: #7c3aed;
+  white-space: nowrap;
+}
+
+:host(.today) .more-events { color: #ffffff; }
+:host(.other-month) .more-events { opacity: 0.5; }

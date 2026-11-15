@@ -23,6 +23,107 @@
   margin-bottom: 22px;
 }
 
+/* --- Flèches mois précédent / suivant, de part et d'autre du mois affiché --- */
+.month-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+}
+
+.month-label {
+  min-width: 9em;
+}
+
+/* Mêmes flèches que les '.btn-move' de l'éditeur de kanban : glyphe ← → dans un bouton bordé,
+   aux couleurs du calendrier. */
+.nav-btn {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #7c3aed;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nav-btn:hover {
+  background: #f6f5fb;
+}
+
+.nav-btn:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* --- Sélecteur direct du mois et de l'année + bouton « Aujourd'hui » --- */
+.period-controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.today-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 10px;
+  background: #ede9fe;
+  color: #7c3aed;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.today-btn:hover {
+  background: #ddd6fe;
+}
+
+.today-btn:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.month-picker {
+  padding: 6px 10px;
+  border: 1px solid #ddd6fe;
+  border-radius: 10px;
+  background: #f6f5fb;
+  color: #3b3f4d;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.month-picker:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* --- État de chargement des événements (discret) --- */
+.events-loading {
+  margin: -10px 0 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #a3a3b5;
+}
+
+/* --- État d'erreur du chargement des événements (discret) --- */
+.events-error {
+  margin: -10px 0 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #b91c1c;
+}
+
 /* --- Grille 7 colonnes --- */
 .calendar-grid {
   display: grid;

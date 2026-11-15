@@ -2,9 +2,18 @@ import { Component, inject, Input, OnInit, signal } from '@angular/core';
 import { CalendarService } from '../core/services/calendar-service';
 import {CalendarDay} from '../core/models/calendar-day.model'
 import { CalendarEvent } from '../core/models/calendar-event.model';
+import { buildMonthGrid, isValidMonthKey, localDateKey, localMonthKey, monthKeyOfDate } from '../core/services/calendar-grid';
+import { groupEventsByDate, sortEvents } from '../core/services/calendar-events';
 import {CalendarDayComponent} from '../calendar-day/calendar-day'
 import { DatePipe } from '@angular/common';
 import { Router, RouterLink, RouterLinkActive, ActivatedRoute } from '@angular/router';
+
+/** Outcome of loading the events of a grid: the cells to display, and whether the fetch failed. */
+interface GridLoadResult
+{
+  readonly days : CalendarDay[]
+  readonly failed : boolean
+}
 
 @Component({
   selector: 'app-calendar',
@@ -14,38 +23,50 @@ import { Router, RouterLink, RouterLinkActive, ActivatedRoute } from '@angular/r
 })
 export class Calendar implements OnInit
 {
-  private readonly THIRTY_ONE_DAYS_MONTHS = [1, 3, 5, 7, 8, 10,12]
-  private readonly THIRTY_DAYS_MONTHS = [4,6,9,11]
-
-
-
   private calendarService = inject(CalendarService)
   selectedMonthDate : (string)
   nextMonth : string
   previousMonth : string
+  /** Local civil date of today (`'YYYY-MM-DD'`), refreshed each time a month is displayed. */
+  todayDate : string
+  /** Civil date (`'YYYY-MM-DD'`) the user last picked in the grid, empty while none is selected. */
+  selectedDate : string
   router : Router = inject(Router)
   route: ActivatedRoute = inject(ActivatedRoute)
   days = signal<(CalendarDay|null)[]>([])
+  /** Whether the events of the displayed grid are being fetched, to show a discreet loading state. */
+  eventsLoading = signal<boolean>(false)
+  /** Whether the last fetch of the displayed grid's events failed, to tell it apart from an empty month. */
+  eventsError = signal<boolean>(false)
+  /** Number of the most recent grid load: only its answer may update the screen. */
+  private latestGridLoad : number = 0
 
   constructor()
   {
     this.selectedMonthDate = ""
     this.nextMonth = ""
     this.previousMonth = ""
+    this.todayDate = ""
+    this.selectedDate = ""
     this.days.set([])
   }
 
   async ngOnInit() : Promise<void>
   {
     this.route.paramMap.subscribe(async (params) => {
-    const tempMonthDate = params.get('selectedMonthDate'); 
-    if(tempMonthDate !== null)
-    {
-      this.selectedMonthDate = tempMonthDate
-      this.previousMonth = this.getPreviousMonth()
-      this.nextMonth = this.getNextMonth()
-      this.days.set(await this.buildSelectedMonthCalendar()) 
-    }
+      const tempMonthDate = params.get('selectedMonth');
+      if(tempMonthDate === null || !isValidMonthKey(tempMonthDate))
+      {
+        await this.redirectToCurrentMonth()
+      }
+      else
+      {
+        this.selectedMonthDate = tempMonthDate
+        this.previousMonth = this.getPreviousMonth()
+        this.nextMonth = this.getNextMonth()
+        this.todayDate = this.computeTodayDate()
+        await this.refreshDays()
+      }
     });
     //
     console.log(this.days())
@@ -58,88 +79,96 @@ export class Calendar implements OnInit
     return segments.at(-1) ?? ''
   }
 
-  private async buildSelectedMonthCalendar() : Promise<(CalendarDay|null)[]>
+  /**
+   * Replaces a missing or malformed period in the URL by the local current month. The URL stays the
+   * single source of truth of the displayed month: the corrected route is what rebuilds the grid, and
+   * `replaceUrl` keeps the invalid address out of the browser history.
+   */
+  private async redirectToCurrentMonth() : Promise<void>
   {
-    let days : (CalendarDay | null)[] = new Array(42).fill(null)
-    let numberOfDays = 0
-    let firstDate : Date = new Date(this.selectedMonthDate + "-1")
-    const firstDayIndex = this.getWeekDayNumber(firstDate)
-    console.log("firstDayIndex",firstDayIndex)
-  
-    let monthDateArr = this.selectedMonthDate.split("-")
-
-    let previousMonth : string = this.getPreviousMonth()
-    let nextMonth : string = this.getNextMonth()
-    let selectedMonthnumberOfDays = 0 
-
-    if(monthDateArr.length > 0)
-    {
-      const month : number = Number(monthDateArr[1])
-      const year : number =  Number(monthDateArr[0])
-      selectedMonthnumberOfDays = this.computeDayNumberFromMonth(month, year)
-      let lastDayIndex = firstDayIndex + selectedMonthnumberOfDays
-      await this.fillCalendarArray(days, firstDayIndex, lastDayIndex, 1, this.selectedMonthDate)
-    }
-
-    monthDateArr = previousMonth.split("-")
-    if(monthDateArr.length > 0)
-    {
-      const month : number = Number(monthDateArr[1])
-      const year : number =  Number(monthDateArr[0])
-      let numberOfDaysIndex = (this.computeDayNumberFromMonth(month, year) - (firstDayIndex-1))
-
-      await this.fillCalendarArray(days, 0, firstDayIndex, numberOfDaysIndex, previousMonth)
-    }
-
-    monthDateArr = nextMonth.split("-")
-    if(monthDateArr.length > 0)
-    {
-      const month : number = Number(monthDateArr[1])
-      const year : number =  Number(monthDateArr[0])
-      let numberOfDaysIndex = (this.computeDayNumberFromMonth(month, year) - (firstDayIndex-1))
-
-      await this.fillCalendarArray(days, firstDayIndex+selectedMonthnumberOfDays, 42, 1, nextMonth)
-    }
-
-
-
-    return Promise.all(days)
-
+    const now : Date = new Date()
+    const currentMonth : string = localMonthKey(now)
+    await this.router.navigate(['/calendar', currentMonth], { replaceUrl: true })
   }
 
-  private async fillCalendarArray(days : (
-      CalendarDay | null)[], 
-      firstIndex : number, 
-      lastIndex : number, 
-      dayIndex : number,
-      monthDate : string
-  )
+  /**
+   * Replaces the displayed grid with the one of the selected month, in two steps: the 42 cells are shown
+   * at once without events, so the grid stays usable while they load and the events of a previous period
+   * are never shown as if they belonged to the new one; then the cells are filled once the events arrive.
+   * The loading state is shown for as long as the fetch runs, and a failure raises the error state until
+   * the next load, so it is never mistaken for a month without events.
+   *
+   * Each load is numbered: when the user navigates while a fetch is in flight, the answer of the older
+   * period arrives after a newer load has started and is ignored, so it never overwrites the cells, the
+   * loading state nor the error state of the period actually displayed.
+   */
+  private async refreshDays() : Promise<void>
   {
+    this.latestGridLoad += 1
+    const gridLoad : number = this.latestGridLoad
+    const gridDates : string[] = this.buildSelectedMonthGridDates()
+    const daysWithoutEvents : CalendarDay[] = groupEventsByDate(gridDates, [])
+    this.days.set(daysWithoutEvents)
+    this.eventsLoading.set(true)
+    this.eventsError.set(false)
+    const loadResult : GridLoadResult = await this.fetchGridDays(gridDates)
+    if(gridLoad === this.latestGridLoad)
+    {
+      this.days.set(loadResult.days)
+      this.eventsError.set(loadResult.failed)
+      this.eventsLoading.set(false)
+    }
+  }
 
-    if(firstIndex < 0 || firstIndex > days.length)
+  /**
+   * Loads the cells of a grid without ever rejecting: a failed fetch must not escape as an unhandled
+   * rejection, so it is turned into the cells without events, flagged as failed.
+   * @param gridDates The 42 dates of the grid, in display order.
+   * @returns The cells to display, and whether their events could not be fetched.
+   */
+  private async fetchGridDays(gridDates : string[]) : Promise<GridLoadResult>
+  {
+    try
     {
-      return
+      const daysWithEvents : CalendarDay[] = await this.loadGridDays(gridDates)
+      return { days: daysWithEvents, failed: false }
     }
-    else if (lastIndex < 0 || lastIndex > days.length)
+    catch
     {
-      return
+      const daysWithoutEvents : CalendarDay[] = groupEventsByDate(gridDates, [])
+      return { days: daysWithoutEvents, failed: true }
     }
-    else if(firstIndex > lastIndex)
-    {
-      let tmp = firstIndex
-      firstIndex = lastIndex
-      lastIndex = tmp
-    }
-    for(let i=firstIndex; i<lastIndex; i++)
-    {
-      const day : string = monthDate+ "-"+ String(dayIndex).padStart(2, '0')
-      const calendarEvents : CalendarEvent[] = await this.calendarService.getEventsFromDate(day)
+  }
 
-      const calendarDay : CalendarDay = {date: day, events : calendarEvents}
-      days[i] = calendarDay
-      dayIndex++
+  /**
+   * Builds the 42 civil dates of the displayed month's grid, Monday first: the previous-month tail, the
+   * month itself, then the next-month head, each a real date. The grid only depends on the period, so it
+   * can be shown before any event is loaded.
+   * @returns The 42 `'YYYY-MM-DD'` dates, in display order.
+   */
+  private buildSelectedMonthGridDates() : string[]
+  {
+    const periodParts : string[] = this.selectedMonthDate.split('-')
+    const year : number = Number(periodParts[0])
+    const month : number = Number(periodParts[1])
+    return buildMonthGrid(year, month)
+  }
 
-    }
+  /**
+   * Loads the events of a whole grid with one ranged query over [first cell, last cell], so the events
+   * of the adjacent-month cells are fetched too, then sorts them and aligns each one to the cell of its
+   * civil date (plain string equality).
+   * @param gridDates The 42 dates of the grid, in display order.
+   * @returns One `CalendarDay` per cell, holding its sorted events.
+   */
+  private async loadGridDays(gridDates : string[]) : Promise<CalendarDay[]>
+  {
+    const firstGridDate : string = gridDates[0]
+    const lastGridDate : string = gridDates[gridDates.length - 1]
+    const gridRange : { start: string, end: string } = { start: firstGridDate, end: lastGridDate }
+    const gridEvents : CalendarEvent[] = await this.calendarService.getEventsFromRangedDate(gridRange)
+    const sortedEvents : CalendarEvent[] = sortEvents(gridEvents)
+    return groupEventsByDate(gridDates, sortedEvents)
   }
 
   private getPreviousMonth() : string
@@ -186,46 +215,6 @@ export class Calendar implements OnInit
     return nextMonthStr
   }
 
-  private computeDayNumberFromMonth(month: number, year: number) : number
-  {
-    
-    let numberOfDays:number = 0
-    if(month === 2)
-    {
-      if(this.estBissextile(year))
-      {
-        numberOfDays = 29
-      }
-      else
-      {
-        numberOfDays = 28
-      }
-    }
-    if(this.THIRTY_ONE_DAYS_MONTHS.includes(month)) 
-    {
-      numberOfDays = 31
-    }
-    else if (this.THIRTY_DAYS_MONTHS.includes(month))
-    {
-      numberOfDays = 30
-    }
-
-    return numberOfDays
-
-  }
-
-  private estBissextile(annee: number): boolean 
-  {
-    return annee % 4 === 0 &&
-           (annee % 100 !== 0 || annee % 400 === 0);
-  }
-
-  private getWeekDayNumber(date: Date)
-  {
-    console.log(date.getDay())
-    return (date.getDay() + 6) % 7 
-  }
-
   isCurrentMonth(day: CalendarDay) : boolean
   {
     const monthArr : string[] = day.date.split("-")
@@ -237,6 +226,89 @@ export class Calendar implements OnInit
     }
 
     return false
+  }
+
+  /**
+   * Computes today as a local civil date, so the « today » marker never shifts a day through UTC.
+   * @returns Today's `'YYYY-MM-DD'` date in the user's time zone.
+   */
+  private computeTodayDate() : string
+  {
+    const now : Date = new Date()
+    return localDateKey(now)
+  }
+
+  /**
+   * Tells whether a cell holds today's date, whichever month it belongs to: an adjacent-month cell of
+   * the grid can be today too.
+   * @param day The cell of the grid.
+   * @returns `true` when the cell is today's local civil date.
+   */
+  isToday(day: CalendarDay) : boolean
+  {
+    return day.date === this.todayDate
+  }
+
+  /**
+   * Selects the date of a cell; only one date is selected at a time. A date of the displayed month only
+   * changes the selection, kept in the component state: the URL stays put and nothing is fetched again.
+   * A date of an adjacent month also navigates to its month, where it stays selected since the
+   * component is reused when only the route parameter changes.
+   * @param day The cell the user picked.
+   */
+  async selectDay(day: CalendarDay) : Promise<void>
+  {
+    this.selectedDate = day.date
+    if(!this.isCurrentMonth(day))
+    {
+      await this.navigateToMonthOf(day)
+    }
+  }
+
+  /**
+   * Navigates to the month a cell belongs to, as an explicit navigation that adds a history entry.
+   * @param day A cell of the grid, typically of an adjacent month.
+   */
+  private async navigateToMonthOf(day: CalendarDay) : Promise<void>
+  {
+    const monthOfDay : string = monthKeyOfDate(day.date)
+    await this.router.navigate(['/calendar', monthOfDay])
+  }
+
+  /**
+   * Tells whether a cell holds the selected date. Independent from {@link isToday}: a cell can be both.
+   * @param day The cell of the grid.
+   * @returns `true` when the cell is the date the user last picked.
+   */
+  isSelected(day: CalendarDay) : boolean
+  {
+    return day.date === this.selectedDate
+  }
+
+  /**
+   * Goes to the period chosen in the month picker, as an explicit navigation that adds a history entry.
+   * A malformed value, or the period already displayed, triggers nothing: no navigation, no history
+   * entry, no fetch.
+   * @param pickedMonth The `'YYYY-MM'` value committed by the picker.
+   */
+  async chooseMonth(pickedMonth: string) : Promise<void>
+  {
+    const isNewValidPeriod : boolean = isValidMonthKey(pickedMonth) && pickedMonth !== this.selectedMonthDate
+    if(isNewValidPeriod)
+    {
+      await this.router.navigate(['/calendar', pickedMonth])
+    }
+  }
+
+  /**
+   * Goes back to the month holding today's local civil date. Shares the rules of {@link chooseMonth}:
+   * nothing happens when that month is already displayed.
+   */
+  async goToToday() : Promise<void>
+  {
+    const now : Date = new Date()
+    const currentMonth : string = localMonthKey(now)
+    await this.chooseMonth(currentMonth)
   }
 
   goToNextMonth()
