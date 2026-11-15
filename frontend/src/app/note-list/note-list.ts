@@ -5,11 +5,12 @@ import { Note } from '../core/models/note.model';
 import { NOTE_COLOR_PALETTE } from '../core/models/block-style.model';
 import { NotesService } from '../core/services/notes-service';
 import { ConfirmDialog } from '../core/components/confirm-dialog/confirm-dialog';
+import { NavBar } from '../core/components/navbar/navbar';
 
 @Component({
   selector: 'app-note-list',
   standalone: true,
-  imports: [CommonModule, RouterLink, RouterLinkActive, ConfirmDialog],
+  imports: [CommonModule, RouterLink, RouterLinkActive, ConfirmDialog, NavBar],
   templateUrl: './note-list.html',
   styleUrl: './note-list.css',
 })
@@ -31,6 +32,8 @@ export class NoteList implements OnInit {
   isLoading = signal<boolean>(false);
   /** True when the last load failed (shows an error panel with a "Retry" button). */
   loadError = signal<boolean>(false);
+  /** Message of the last load failure, shown under the error panel to diagnose it on a device. */
+  loadErrorDetail = signal<string>('');
   /** Current search term used to filter the list. */
   searchQuery = signal<string>('');
 
@@ -88,11 +91,13 @@ export class NoteList implements OnInit {
   async loadNotes(): Promise<void> {
     this.isLoading.set(true);
     this.loadError.set(false);
+    this.loadErrorDetail.set('');
     try {
       const notes = await this.noteService.getAllNotes();
       this.notes.set(notes);
     } catch (err) {
       console.error('Erreur lors du chargement des notes', err);
+      this.loadErrorDetail.set(err instanceof Error ? err.message : String(err));
       this.loadError.set(true);
     } finally {
       this.isLoading.set(false);

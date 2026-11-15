@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
@@ -5,6 +6,10 @@ import { vi } from 'vitest';
 import { KanbanList } from './kanban-list';
 import { KanbanService } from '../core/services/kanban-service';
 import { Kanban } from '../core/models';
+
+/** Empty target of the real `/kanban` route restored by the cases that need the real router. */
+@Component({ selector: 'app-empty-route', template: '' })
+class EmptyRoute {}
 
 /**
  * Tests de la page « Mes Kanbans » (approche TDD / boîte noire).
@@ -547,6 +552,132 @@ describe('KanbanList (page « Mes Kanbans »)', () => {
 
       expect(bannerAfterFailure).toBe(true);
       expect(bannerAtNextActionStart).toBe(false);
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 13 — Intégration de la barre de navigation (NAVBAR, lot B)
+  // ---------------------------------------------------------------------------
+  /**
+   * Group 13 of `.agent/NAVBAR/PLAN_TESTS_NAVBAR.md` (couples P17 to P23, decision D2).
+   *
+   * Numbered 13 so that its titles never collide with the existing T6 to T11 of this file. Only
+   * T13.3 restores the real router (the `navigateByUrl` spy of the shared `beforeEach` is lifted
+   * for that case alone); the other cases keep the spy and never reach a real URL.
+   *
+   * DOM contract: `nav[aria-label="Navigation principale"]` is the bar, `nav .navbar-tab` one tab,
+   * `[aria-current="page"]` inside the bar the active tab, `.fab` the "+" that stays outside the bar.
+   */
+  describe('Intégration de la barre de navigation', () => {
+    const NAVBAR_SELECTOR: string = 'nav[aria-label="Navigation principale"]';
+
+    /** Returns every navigation bar found in the list's DOM. */
+    function navigationBars(): HTMLElement[] {
+      return Array.from(el.querySelectorAll<HTMLElement>(NAVBAR_SELECTOR));
+    }
+
+    /** Returns the labels of the tabs of the bar, in display order. */
+    function tabLabels(): string[] {
+      const tabElements: HTMLElement[] = Array.from(el.querySelectorAll<HTMLElement>(`${NAVBAR_SELECTOR} .navbar-tab`));
+      return tabElements.map((tab: HTMLElement): string => (tab.textContent ?? '').trim());
+    }
+
+    it('T13.1 la liste affiche une seule barre, aux trois onglets', async () => {
+      await render(SAMPLE);
+
+      const bars: HTMLElement[] = navigationBars();
+      const labels: string[] = tabLabels();
+
+      expect(bars.length).toBe(1);
+      expect(labels).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T13.2 le « + » est hors de la barre ; la barre n’a aucun contrôle de création', async () => {
+      await render(SAMPLE);
+
+      const bar: HTMLElement = navigationBars()[0];
+      const addButton: HTMLElement | null = el.querySelector<HTMLElement>('.fab');
+      const creationControlsInBar: NodeListOf<HTMLElement> = bar.querySelectorAll<HTMLElement>('.fab, [aria-label*="Nouveau"]');
+
+      expect(addButton).not.toBeNull();
+      expect(bar.contains(addButton)).toBe(false);
+      expect(creationControlsInBar.length).toBe(0);
+    });
+
+    it('T13.3 sur la vraie route /kanban, Kanbans est l’onglet actif', async () => {
+      const router: Router = TestBed.inject(Router);
+      navigateByUrlSpy.mockRestore();
+      router.resetConfig([
+        { path: 'notes', component: EmptyRoute },
+        { path: 'kanban', component: EmptyRoute },
+      ]);
+      await render(SAMPLE);
+
+      await router.navigateByUrl('/kanban');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const activeTabs: HTMLElement[] = Array.from(el.querySelectorAll<HTMLElement>(`${NAVBAR_SELECTOR} [aria-current="page"]`));
+      const activeLabels: string[] = activeTabs.map((tab: HTMLElement): string => (tab.textContent ?? '').trim());
+
+      expect(activeLabels).toEqual(['Kanbans']);
+    });
+
+    it('T13.4 la barre est présente pendant le chargement', async () => {
+      const neverResolvingLoad: Promise<Kanban[]> = new Promise<Kanban[]>((): void => undefined);
+      kanbanService.getAllKanbans.mockReturnValue(neverResolvingLoad);
+      fixture.detectChanges();
+
+      const spinner: Element | null = el.querySelector('.spinner');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(spinner).not.toBeNull();
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T13.5 la barre est présente quand la liste est vide', async () => {
+      await render([]);
+
+      const emptyState: Element | null = el.querySelector('.empty');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(emptyState).not.toBeNull();
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T13.6 la barre est présente quand le chargement a échoué', async () => {
+      kanbanService.getAllKanbans.mockRejectedValue(new Error('boom'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const errorState: Element | null = el.querySelector('.error-state');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(errorState).not.toBeNull();
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T13.7 la barre reste présente avec le bandeau d’erreur après une suppression refusée', async () => {
+      kanbanService.deleteKanban.mockRejectedValue(new Error('suppression refusée'));
+      await render(SAMPLE);
+
+      const displayedCards: HTMLElement[] = cards();
+      const trashButton: HTMLElement = trashButtonOf(displayedCards[1]);
+
+      await clickElement(trashButton);
+      await clickOn('.confirm-card .btn-confirm');
+
+      const bannerShown: boolean = isShown('.action-error');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(bannerShown).toBe(true);
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
     });
   });
 });

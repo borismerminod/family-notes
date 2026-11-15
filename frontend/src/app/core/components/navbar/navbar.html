@@ -1,0 +1,16 @@
+<nav aria-label="Navigation principale" class="navbar">
+  @for (tab of tabs; track tab.id) {
+    @if (tab.enabled) {
+      <a
+        class="navbar-tab"
+        [routerLink]="tab.commands"
+        routerLinkActive="navbar-tab-active"
+        ariaCurrentWhenActive="page"
+        [routerLinkActiveOptions]="{ exact: true }"
+        >{{ tab.label }}</a
+      >
+    } @else {
+      <button type="button" class="navbar-tab navbar-tab-disabled" disabled>{{ tab.label }}</button>
+    }
+  }
+</nav>

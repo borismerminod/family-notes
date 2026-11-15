@@ -1,3 +1,4 @@
+import { Component } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Router, provideRouter } from '@angular/router';
 import { vi } from 'vitest';
@@ -26,6 +27,10 @@ const SAMPLE = [
   { id: '2', title: 'Idées vacances', category: {id : 'cat-2', name: 'Voyage', color:''}, updatedAt: '2026-02-01' },
   { id: '3', title: 'Recette gâteau', category: {id : 'cat-3', name: 'Cuisine', color:''}, updatedAt: '2026-03-01' },
 ];
+
+/** Empty target of the real `/notes` route restored by the cases that need the real router. */
+@Component({ selector: 'app-empty-route', template: '' })
+class EmptyRoute {}
 
 describe('NoteList (écran liste des notes)', () => {
   let fixture: ComponentFixture<NoteList>;
@@ -386,6 +391,114 @@ describe('NoteList (écran liste des notes)', () => {
       type('zzzzz-introuvable');
       expect(el.querySelector('.empty')).toBeTruthy();
       expect(emptyText()).toContain('recherche');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // Groupe 12 — Intégration de la barre de navigation (NAVBAR, lot B)
+  // ---------------------------------------------------------------------------
+  /**
+   * Group 12 of `.agent/NAVBAR/PLAN_TESTS_NAVBAR.md` (couples P17 to P22, decision D2).
+   *
+   * Numbered 12 so that its titles never collide with the existing T1 to T9 of this file. Only
+   * T12.3 restores the real router (the `navigateByUrl` spy of the shared `beforeEach` is lifted
+   * for that case alone); the other cases keep the spy and never reach a real URL.
+   *
+   * DOM contract: `nav[aria-label="Navigation principale"]` is the bar, `nav .navbar-tab` one tab,
+   * `[aria-current="page"]` inside the bar the active tab, `.fab` the "+" that stays outside the bar.
+   */
+  describe('Intégration de la barre de navigation', () => {
+    const NAVBAR_SELECTOR: string = 'nav[aria-label="Navigation principale"]';
+
+    /** Returns every navigation bar found in the list's DOM. */
+    function navigationBars(): HTMLElement[] {
+      return Array.from(el.querySelectorAll<HTMLElement>(NAVBAR_SELECTOR));
+    }
+
+    /** Returns the labels of the tabs of the bar, in display order. */
+    function tabLabels(): string[] {
+      const tabElements: HTMLElement[] = Array.from(el.querySelectorAll<HTMLElement>(`${NAVBAR_SELECTOR} .navbar-tab`));
+      return tabElements.map((tab: HTMLElement): string => (tab.textContent ?? '').trim());
+    }
+
+    it('T12.1 la liste affiche une seule barre, aux trois onglets', async () => {
+      await render(SAMPLE);
+
+      const bars: HTMLElement[] = navigationBars();
+      const labels: string[] = tabLabels();
+
+      expect(bars.length).toBe(1);
+      expect(labels).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T12.2 le « + » est hors de la barre ; la barre n’a aucun contrôle de création', async () => {
+      await render(SAMPLE);
+
+      const bar: HTMLElement = navigationBars()[0];
+      const addButton: HTMLElement | null = el.querySelector<HTMLElement>('.fab');
+      const creationControlsInBar: NodeListOf<HTMLElement> = bar.querySelectorAll<HTMLElement>('.fab, [aria-label*="Nouvelle"]');
+
+      expect(addButton).not.toBeNull();
+      expect(bar.contains(addButton)).toBe(false);
+      expect(creationControlsInBar.length).toBe(0);
+    });
+
+    it('T12.3 sur la vraie route /notes, Notes est l’onglet actif', async () => {
+      const router: Router = TestBed.inject(Router);
+      navigateByUrlSpy.mockRestore();
+      router.resetConfig([
+        { path: 'notes', component: EmptyRoute },
+        { path: 'kanban', component: EmptyRoute },
+      ]);
+      await render(SAMPLE);
+
+      await router.navigateByUrl('/notes');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const activeTabs: HTMLElement[] = Array.from(el.querySelectorAll<HTMLElement>(`${NAVBAR_SELECTOR} [aria-current="page"]`));
+      const activeLabels: string[] = activeTabs.map((tab: HTMLElement): string => (tab.textContent ?? '').trim());
+
+      expect(activeLabels).toEqual(['Notes']);
+    });
+
+    it('T12.4 la barre est présente pendant le chargement', async () => {
+      const neverResolvingLoad: Promise<typeof SAMPLE> = new Promise<typeof SAMPLE>((): void => undefined);
+      notesService.getAllNotes.mockReturnValue(neverResolvingLoad);
+      fixture.detectChanges();
+
+      const spinner: Element | null = el.querySelector('.spinner');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(spinner).not.toBeNull();
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T12.5 la barre est présente quand la liste est vide', async () => {
+      await render([]);
+
+      const emptyState: Element | null = el.querySelector('.empty');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(emptyState).not.toBeNull();
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+    });
+
+    it('T12.6 la barre est présente quand le chargement a échoué', async () => {
+      notesService.getAllNotes.mockRejectedValue(new Error('boom'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      fixture.detectChanges();
+
+      const errorState: Element | null = el.querySelector('.error-state');
+      const bars: HTMLElement[] = navigationBars();
+
+      expect(errorState).not.toBeNull();
+      expect(bars.length).toBe(1);
+      expect(tabLabels()).toEqual(['Notes', 'Kanbans', 'Calendrier']);
     });
   });
 });

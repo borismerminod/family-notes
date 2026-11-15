@@ -16,7 +16,7 @@
 --
 -- **Aucune contrainte d'unicité**, et c'est voulu :
 --   * ni sur `name`, ni sur `(kanban_id, name)` — deux colonnes homonymes sont permises dans un
---     même tableau, l'`id` les distingue, comme D-K4 pour les tableaux ;
+--     même tableau, l'`id` les distingue, comme D-K4 pour les tableaux.
 --   * ni sur `(kanban_id, position)` — l'enregistrement met à jour les colonnes affichées
 --     **avant** de supprimer les absentes (D-L10), ce qui laisse passer une collision temporaire
 --     de positions.

@@ -4,6 +4,7 @@ import { Router } from '@angular/router';
 import { Kanban } from '../core/models/kanban.model';
 import { KanbanService } from '../core/services/kanban-service';
 import { ConfirmDialog } from '../core/components/confirm-dialog/confirm-dialog';
+import { NavBar } from '../core/components/navbar/navbar';
 
 /**
  * Board list page, served by the `/kanban` route (lot 2 of
@@ -22,7 +23,7 @@ import { ConfirmDialog } from '../core/components/confirm-dialog/confirm-dialog'
 @Component({
   selector: 'app-kanban-list',
   standalone: true,
-  imports: [CommonModule, ConfirmDialog],
+  imports: [CommonModule, ConfirmDialog, NavBar],
   templateUrl: './kanban-list.html',
   styleUrl: './kanban-list.css',
 })

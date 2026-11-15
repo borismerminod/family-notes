@@ -19,17 +19,17 @@
 --
 -- **Aucune contrainte d'unicité**, et c'est voulu :
 --   * ni sur `text` — deux cartes homonymes sont permises, dans une même colonne comme dans deux
---     colonnes différentes, l'`id` les distingue (US2, comme D-L6 pour les colonnes) ;
+--     colonnes différentes, l'`id` les distingue (US2, comme D-L6 pour les colonnes).
 --   * ni sur `(column_id, position)` — l'enregistrement met à jour les cartes affichées **avant**
 --     de supprimer les absentes (D-C8), ce qui laisse passer une collision temporaire de
 --     positions. L'ordre des quatre phases est précisément ce qui permet à une carte déplacée
---     d'une colonne à l'autre de garder son identifiant au lieu d'être détruite puis recréée ;
+--     d'une colonne à l'autre de garder son identifiant au lieu d'être détruite puis recréée.
 --   * ni sur `note_id` — deux cartes peuvent viser la **même** note (US2).
 --
 -- Les deux actions référentielles portent chacune une décision de la SPEC :
 --   * `column_id` en `ON DELETE CASCADE` — retirer une liste emporte ses cartes, et comme
 --     `kanban_columns.kanban_id` est lui-même en cascade, supprimer un tableau nettoie les deux
---     étages d'un coup ;
+--     étages d'un coup.
 --   * `note_id` en `ON DELETE SET NULL` — supprimer une note ne doit **jamais** faire disparaître
 --     du travail dans un tableau (H-C6, D-C16) : la carte garde son texte, seule la référence
 --     s'efface. Le texte est la donnée porteuse, le lien n'est qu'un complément.
