@@ -1,0 +1,269 @@
+<div class="kanban-editor">
+
+  <!-- Navigation bar: Back · title · Save (D-E5). The back button carries '.btn-back', not
+       '.btn-cancel', which already belongs to the confirmation popup (D6). -->
+  <header class="editor-navbar">
+    <button
+      type="button"
+      class="btn-nav btn-back"
+      (click)="onBack()"
+      aria-label="Retour à la liste des tableaux"
+    >
+      Retour
+    </button>
+
+    <span class="editor-navbar-title">
+      {{ editing() ? 'Modifier le tableau' : 'Nouveau tableau' }}
+    </span>
+
+    @if (!isLoading() && !loadError() && !notFound()) {
+      <button type="button" class="btn-nav btn-save" (click)="onSave()">Enregistrer</button>
+    }
+  </header>
+
+  <!-- Failed save: a visible message, never left in the console alone (D-E9). -->
+  @if (saveError()) {
+    <p class="action-error" role="alert">{{ saveError() }}</p>
+  }
+
+  @if (isLoading()) {
+    <div class="loading-overlay">
+      <div class="spinner"></div>
+    </div>
+  } @else if (notFound()) {
+    <!-- Unknown identifier: the board is named as missing and the user is given a way back,
+         rather than being taken to the list on their own (D-E4, revised on 2026-10-11). -->
+    <div class="empty not-found">
+      <span class="icon icon-alert" aria-hidden="true"></span>
+      <p>Tableau introuvable.</p>
+
+      <div class="error-actions">
+        <button type="button" class="btn-back-to-list" (click)="goToList()">
+          Revenir à la liste
+        </button>
+      </div>
+    </div>
+  } @else if (loadError()) {
+    <!-- Load error: 'Réessayer' reads the board again, 'Revenir à la liste' goes back with no
+         question asked — there is no typed name to lose (D3). -->
+    <div class="empty error-state">
+      <span class="icon icon-alert" aria-hidden="true"></span>
+      <p>Impossible de charger ce tableau.</p>
+
+      <div class="error-actions">
+        <button type="button" class="btn-retry" (click)="onRetry()">Réessayer</button>
+        <button type="button" class="btn-back-to-list" (click)="goToList()">
+          Revenir à la liste
+        </button>
+      </div>
+    </div>
+  } @else {
+    <!-- Header: the board name. Empty on a brand new board, 'Sans titre' being a mere hint —
+         the fallback on that name happens on save (D-E2). -->
+    <div class="editor-head">
+      <label class="sr-only" for="kanban-editor-name">Nom du tableau</label>
+      <input
+        id="kanban-editor-name"
+        type="text"
+        class="editor-name"
+        [value]="name()"
+        (input)="name.set($any($event.target).value)"
+        [placeholder]="defaultName"
+      />
+    </div>
+
+    <!-- Board content area: one panel per column of the displayed composition, horizontally and
+         in order, scrollable when they overflow the screen (D-L21). -->
+    <div class="board-canvas">
+      @for (column of columns(); track column.id) {
+        <!-- The editor renders the two move buttons under the column, because it alone knows its
+             neighbours, hence whether a move is possible (D-L23). Under and not beside: a gutter
+             free of any control is what makes two lists read as two cards. They are disabled at
+             the ends of the board, and not hidden. -->
+        <div class="column-slot">
+          <app-kanban-column
+            [column]="column"
+            [selectedCardId]="selectedCardId()"
+            [moveMode]="moveMode()"
+            [canMoveCardLeft]="canMoveSelectedCardLeft()"
+            [canMoveCardRight]="canMoveSelectedCardRight()"
+            (renamed)="onRenameColumn(column.id, $event)"
+            (removeRequested)="onRemoveColumn(column)"
+            (addCardRequested)="onStartAddCard(column.id)"
+            (cardTextChanged)="onCardTextChanged($event)"
+            (cardRemoveRequested)="onCardRemoveRequested($event)"
+            (cardNoteRequested)="onCardNoteRequested($event)"
+            (cardNoteOpenRequested)="onNoteOpenRequested($event)"
+            (moveModeToggled)="onToggleMoveMode()"
+            (cardSelected)="onCardSelected($event)"
+            (cardMoveRequested)="onCardMoveRequested($event)"
+          />
+
+          <!-- Draft of a new card, rendered in the slot of the list it targets and **outside** the
+               composition: a card enters the board only when the draft is validated (D-C29). It is
+               named apart from the '.new-column' of a new list, both being allowed to be open at
+               the same time (D-EC1). -->
+          @if (addingCardInColumnId() === column.id) {
+            <div class="new-card">
+              <label class="sr-only" [for]="'kanban-new-card-text-' + column.id">
+                Texte de la nouvelle carte
+              </label>
+              <input
+                [id]="'kanban-new-card-text-' + column.id"
+                type="text"
+                class="new-card-text"
+                [value]="newCardText()"
+                (input)="newCardText.set($any($event.target).value)"
+              />
+
+              <!-- Two buttons validate or give the draft up, the soft keyboard of a phone putting
+                   'Entrée' and 'Échap' out of reach — the reason D-EC2 already gave. -->
+              <button
+                type="button"
+                class="btn-card-action btn-new-card-confirm"
+                (click)="onConfirmAddCard()"
+                aria-label="Valider la nouvelle carte"
+              >
+                ✓
+              </button>
+
+              <button
+                type="button"
+                class="btn-card-action btn-new-card-cancel"
+                (click)="onCancelAddCard()"
+                aria-label="Abandonner l'ajout d'une carte"
+              >
+                ✗
+              </button>
+
+              <!-- The reference control of the draft: a card may be linked before it exists, the
+                   creation and a later linking going through the same place (D-C36, E156). -->
+              <button
+                type="button"
+                class="btn-new-card-note"
+                (click)="onNoteRequestedForDraft()"
+                aria-label="Choisir la note liée à la nouvelle carte"
+              >
+                {{ newCardNote()?.title ?? 'Lier une note' }}
+              </button>
+            </div>
+          }
+
+          <div class="column-move">
+            <button
+              type="button"
+              class="btn-move btn-move-left"
+              [disabled]="$first"
+              (click)="onMoveColumnLeft($index)"
+              [attr.aria-label]="'Déplacer la liste « ' + column.name + ' » vers la gauche'"
+            >
+              ←
+            </button>
+
+            <button
+              type="button"
+              class="btn-move btn-move-right"
+              [disabled]="$last"
+              (click)="onMoveColumnRight($index)"
+              [attr.aria-label]="'Déplacer la liste « ' + column.name + ' » vers la droite'"
+            >
+              →
+            </button>
+          </div>
+        </div>
+      }
+
+      <!-- Empty state of a board without any list, which invites adding one. It replaces the
+           ghost column of the previous batch (D-E11 withdrawn). -->
+      @if (columns().length === 0) {
+        <div class="empty no-columns">
+          <span class="icon icon-kanban" aria-hidden="true"></span>
+          <p>Ce tableau n'a aucune liste.<br>Touchez « + » pour en ajouter une.</p>
+        </div>
+      }
+
+      <!-- The add gesture closes the content area, and stays visible on an empty board (D-L23).
+           Touching it gives its place to the in-place field of the new list (D-L18), validated or
+           given up by two buttons, the keyboard being out of reach on a phone. -->
+      @if (addingColumn()) {
+        <div class="new-column">
+          <label class="sr-only" for="kanban-new-column-name">Nom de la nouvelle liste</label>
+          <input
+            id="kanban-new-column-name"
+            type="text"
+            class="new-column-name"
+            [value]="newColumnName()"
+            (input)="newColumnName.set($any($event.target).value)"
+          />
+
+          <button
+            type="button"
+            class="btn-column-action btn-add-confirm"
+            (click)="onAddColumn()"
+            aria-label="Valider la nouvelle liste"
+          >
+            ✓
+          </button>
+
+          <button
+            type="button"
+            class="btn-column-action btn-add-cancel"
+            (click)="onCancelAddColumn()"
+            aria-label="Abandonner l'ajout d'une liste"
+          >
+            ✗
+          </button>
+        </div>
+      } @else {
+        <button
+          type="button"
+          class="btn-add-column"
+          (click)="onStartAddColumn()"
+          aria-label="Ajouter une liste"
+        >
+          +
+        </button>
+      }
+    </div>
+  }
+
+  <!-- Removing a list: the very popup the deletions use, naming the list at stake (D-L4). It is
+       a second instance, with its own open state: the question and what follows it differ from
+       those of the abandon popup below. Each instance carries a class that tells it apart, so a
+       case — and a future style — can aim at one popup rather than at whichever is open. -->
+  <app-confirm-dialog
+    class="confirm-remove-column"
+    [message]="removeColumnMessage()"
+    [(open)]="removeConfirmOpen"
+    confirmLabel="Retirer"
+    cancelLabel="Annuler"
+    (answered)="onRemoveConfirmed($event)"
+  />
+
+  <!-- Removing a card: a third instance of the very popup the deletions use, naming the card at
+       stake (D-C28). Its class tells it apart from the two others, so a case — and a future
+       style — can aim at one popup rather than at whichever is open. -->
+  <app-confirm-dialog
+    class="confirm-remove-card"
+    [message]="'Retirer la carte « ' + (cardToRemove()?.text ?? '') + ' » ?'"
+    [(open)]="removeCardConfirmOpen"
+    confirmLabel="Retirer"
+    cancelLabel="Annuler"
+    (answered)="onRemoveCardConfirmed($event)"
+  />
+
+  <!-- The note picker, one single instance for the whole screen, rendered at all times with its
+       open state driving the popup — exactly as the confirmation popups are (D-C31, D-EC7). -->
+  <app-note-picker [(open)]="notePickerOpen" (selected)="onNoteSelected($event)" />
+
+  <!-- Giving up an unsaved name or composition: the very popup the deletions use (US4, D2). -->
+  <app-confirm-dialog
+    class="confirm-leave"
+    message="Vos modifications ne seront pas enregistrées. Quitter ce tableau ?"
+    [(open)]="confirmOpen"
+    confirmLabel="Quitter"
+    cancelLabel="Annuler"
+    (answered)="onLeaveConfirmed($event)"
+  />
+
+</div>

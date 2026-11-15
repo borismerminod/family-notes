@@ -1,0 +1,86 @@
+<!-- The root carries the selection marker rather than deciding it: the editor holds the single
+     selected card of the whole board and feeds it through the input (D-C23, E118). -->
+<div class="kanban-card" [class.selected]="selected()">
+
+  <!-- The body of the card and its text entry take turns (D-PC1), as the name and the rename field
+       of a column do: touching the body opens the entry, prefilled with the text of the card
+       **currently** received — not one memorized on construction (D-C24, E119). In move mode, the
+       same touch asks for the selection instead (E120). -->
+  @if (isEditing()) {
+    <label class="sr-only" [for]="'kanban-card-text-' + card().id">Texte de la carte</label>
+    <input
+      [id]="'kanban-card-text-' + card().id"
+      type="text"
+      class="card-text-input"
+      [value]="typedText()"
+      (input)="typedText.set($any($event.target).value)"
+    />
+
+    <!-- Two buttons validate or give the entry up, the soft keyboard of a phone putting 'Entrée'
+         and 'Échap' out of reach — the reason D-P1 already gave for the rename of a column. -->
+    <button
+      type="button"
+      class="btn-icon btn-text-confirm"
+      (click)="onValidateText()"
+      [attr.aria-label]="'Valider le texte de la carte « ' + card().text + ' »'"
+    >
+      ✓
+    </button>
+
+    <button
+      type="button"
+      class="btn-icon btn-text-cancel"
+      (click)="onCancelText()"
+      [attr.aria-label]="'Abandonner la saisie du texte de la carte « ' + card().text + ' »'"
+    >
+      ✗
+    </button>
+
+    <!-- The reference control lives inside the text entry (D-C36, D-PC3): creating a card and
+         linking one later go through the same place, and the card at rest keeps two touch targets
+         instead of three. It shows the linked note, or invites to link one, and emits a request —
+         the editor is the one that owns the picker (E126). -->
+    <button
+      type="button"
+      class="btn-card-note"
+      (click)="onNoteRequested()"
+      [attr.aria-label]="'Choisir la note liée à la carte « ' + card().text + ' »'"
+    >
+      {{ card().note?.title ?? 'Lier une note' }}
+    </button>
+  } @else {
+    <button type="button" class="card-body" (click)="onBodyTouched()">
+      <!-- The text of the card, the data that carries the meaning: it is what a card shows at
+           rest, and the only thing it shows when no note is referenced (E117). -->
+      <span class="card-text">{{ card().text }}</span>
+    </button>
+  }
+
+  <!-- The trash of this card (D-C28): it emits a request and nothing else — the confirmation popup
+       and the composition itself stay in the editor (E123). An icon without text, as the trash of
+       a column is, so the whole text of the panel remains the text of the card (D-PC5, E117).
+       It is kept out of the document in move mode, where the whole card serves the selection: a
+       touch target must not mean two things (E124). -->
+  @if (!moveMode()) {
+    <button
+      type="button"
+      class="btn-icon btn-danger btn-remove-card"
+      (click)="onRemoveRequested()"
+      [attr.aria-label]="'Retirer la carte « ' + card().text + ' »'"
+    >
+      <span class="icon icon-trash" aria-hidden="true"></span>
+    </button>
+  }
+
+  <!-- The title of the referenced note, outside the body so that touching it is its own gesture
+       (E125) and so it reads apart from the text of the card (E116) — what D-C3 buys by carrying
+       the whole note. A card without a reference shows nothing in its place: neither an empty
+       slot, nor a « no note » mention (E117). A button and not an anchor: D-C37 wants the look of
+       a link and the behaviour of a request. -->
+  @if (card().note !== null) {
+    <button type="button" class="card-note-title" (click)="onNoteOpenRequested()">
+      {{ card().note?.title }}
+    </button>
+  }
+
+</div>

@@ -11,7 +11,7 @@ description: Documente le code d'implémentation livré lors d'une réalisation 
 > l'**intention**, les **contrats** et les **décisions** — en s'appuyant sur les plans
 > (`FEATURE_*.md`, `APPROCHE_*.md`, `PLAN_TESTS_*.md`, `REVUE_*.md`) — et **non** une
 > paraphrase ligne à ligne du code. Suite naturelle de
-> [`dev_par_groupes`](../dev_par_groupes/SKILL.md) et de
+> [`dev_par_cas`](../dev_par_cas/SKILL.md) et de
 > [`revue_fonctionnalite`](../revue_fonctionnalite/SKILL.md).
 >
 > **Invocation :** quand une réalisation est terminée (groupes verts) et que l'utilisateur veut
@@ -28,7 +28,7 @@ description: Documente le code d'implémentation livré lors d'une réalisation 
 ## Prérequis
 
 - Une réalisation **terminée** dont le code d'implémentation a été livré (idéalement suite de
-  tests verte à la sortie de [`dev_par_groupes`](../dev_par_groupes/SKILL.md)).
+  tests verte à la sortie de [`dev_par_cas`](../dev_par_cas/SKILL.md)).
 - Les **docs de cadrage** décrivant l'intention, sources de vérité pour la doc :
   - la **SPEC** (`.agent/FEATURE_<NOM>.md` — user stories, critères d'acceptation),
   - le **plan d'implémentation** (`.agent/APPROCHE_<NOM>.md` — classes, algorithmes, décisions

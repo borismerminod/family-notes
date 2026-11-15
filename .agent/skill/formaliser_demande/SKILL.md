@@ -7,7 +7,7 @@ description: Formalise un besoin de développement en document cadré — écout
 
 > **But :** transformer un besoin exprimé à l'oral en un document de cadrage clair et
 > validé, réutilisable comme point de départ des skills [`plan_test`](../plan_test/SKILL.md)
-> et [`dev_par_groupes`](../dev_par_groupes/SKILL.md).
+> et [`dev_par_cas`](../dev_par_cas/SKILL.md).
 >
 > **Invocation :** quand l'utilisateur décrit une fonctionnalité ou un besoin de
 > développement pour le projet (« j'aimerais pouvoir… », « il faudrait que… », « formalise

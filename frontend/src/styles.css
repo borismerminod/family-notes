@@ -1,1 +1,6 @@
 /* You can add global styles to this file, and also import other style files */
+
+:root {
+  --navbar-height: 56px;
+  --navbar-fab-gap: 16px;
+}

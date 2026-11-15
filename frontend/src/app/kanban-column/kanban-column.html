@@ -1,0 +1,159 @@
+<div class="kanban-column">
+
+  <!-- Header: the name — touch it to rename in place (D-L18) — and the trash of this column
+       (D-L23). The rename field takes the place of the name while it is open. -->
+  <header class="column-header">
+    @if (isRenaming()) {
+      <label class="sr-only" [for]="'kanban-column-name-' + column().id">Nom de la liste</label>
+      <input
+        [id]="'kanban-column-name-' + column().id"
+        type="text"
+        class="column-name-input"
+        [value]="typedName()"
+        (input)="typedName.set($any($event.target).value)"
+      />
+
+      <button
+        type="button"
+        class="btn-icon btn-rename-confirm"
+        (click)="onValidateRename()"
+        [attr.aria-label]="'Valider le nom de la liste « ' + column().name + ' »'"
+      >
+        ✓
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon btn-rename-cancel"
+        (click)="onCancelRename()"
+        [attr.aria-label]="'Abandonner le renommage de la liste « ' + column().name + ' »'"
+      >
+        ✗
+      </button>
+    } @else {
+      <button
+        type="button"
+        class="column-name"
+        (click)="onStartRename()"
+        [attr.aria-label]="'Renommer la liste « ' + column().name + ' »'"
+      >
+        {{ column().name }}
+      </button>
+
+      <button
+        type="button"
+        class="btn-icon btn-danger btn-remove-column"
+        (click)="onRemoveRequested()"
+        [attr.aria-label]="'Retirer la liste « ' + column().name + ' »'"
+      >
+        <span class="icon icon-trash" aria-hidden="true"></span>
+      </button>
+    }
+  </header>
+
+  <!-- The cards, flanked by the ← → arrows that take the selected card to the neighbouring list
+       (D-C26). The flanks belong to the body and not to the footer, so that they stay beside the
+       pile they move a card out of. -->
+  <div class="column-body">
+    @if (showsCardArrows()) {
+      <button
+        type="button"
+        class="btn-card-move btn-card-move-left"
+        (click)="onCardMoveRequested('left')"
+        [disabled]="!canMoveCardLeft()"
+        aria-label="Déplacer la carte sélectionnée vers la liste de gauche"
+      >
+        ←
+      </button>
+    }
+
+    <!-- The cards of this column, one panel per card, in the order of their positions (D-C22).
+         The area scrolls vertically (D-C27), which is why the arrows and the buttons of the
+         column stay outside of it. -->
+    <div class="column-cards">
+      @for (card of cards(); track card.id) {
+        <app-kanban-card
+          [card]="card"
+          [selected]="card.id === selectedCardId()"
+          [moveMode]="moveMode()"
+          (selectionRequested)="onCardSelected(card.id)"
+          (textChanged)="onCardTextChanged(card.id, $event)"
+          (noteRequested)="onCardNoteRequested(card.id)"
+          (noteOpenRequested)="onCardNoteOpenRequested($event)"
+          (removeRequested)="onCardRemoveRequested(card.id)"
+        />
+      }
+    </div>
+
+    <!-- Empty state of **this list**, not of the board: the board has its own
+         '.empty.no-columns' (D-P6). It sits beside the cards area rather than inside it, T5.3
+         holding '.column-cards' to no child and no text when the cards are not loaded (D-P7). -->
+    @if (cards().length === 0) {
+      <div class="empty no-cards">
+        <p>Aucune carte dans cette liste.<br>Touchez « + » pour en ajouter une.</p>
+      </div>
+    }
+
+    @if (showsCardArrows()) {
+      <button
+        type="button"
+        class="btn-card-move btn-card-move-right"
+        (click)="onCardMoveRequested('right')"
+        [disabled]="!canMoveCardRight()"
+        aria-label="Déplacer la carte sélectionnée vers la liste de droite"
+      >
+        →
+      </button>
+    }
+  </div>
+
+  <!-- Footer of the list, kept out of the scrolling area (D-C27): the ↑ ↓ arrows, which move the
+       selected card inside this pile (D-C26), and the add button, which is rendered whatever the
+       list holds — a list without a card would otherwise be a dead end (E135). -->
+  <div class="column-footer">
+    @if (showsCardArrows()) {
+      <button
+        type="button"
+        class="btn-card-move btn-card-move-up"
+        (click)="onCardMoveRequested('up')"
+        [disabled]="!canMoveCardUp()"
+        aria-label="Déplacer la carte sélectionnée vers le haut"
+      >
+        ↑
+      </button>
+
+      <button
+        type="button"
+        class="btn-card-move btn-card-move-down"
+        (click)="onCardMoveRequested('down')"
+        [disabled]="!canMoveCardDown()"
+        aria-label="Déplacer la carte sélectionnée vers le bas"
+      >
+        ↓
+      </button>
+    }
+
+    <button
+      type="button"
+      class="btn-add-card"
+      (click)="onAddCardRequested()"
+      [attr.aria-label]="'Ajouter une carte à la liste « ' + column().name + ' »'"
+    >
+      +
+    </button>
+
+    <!-- The « déplacer » button emits a toggle and nothing else: the mode is worth the whole
+         board, so only the editor can hold it (D-C23, E136). 'aria-pressed' reads the input,
+         which is the only place the state lives. -->
+    <button
+      type="button"
+      class="btn-toggle-move-mode"
+      (click)="onMoveModeToggled()"
+      [attr.aria-pressed]="moveMode()"
+      [attr.aria-label]="'Déplacer les cartes de la liste « ' + column().name + ' »'"
+    >
+      ⇅
+    </button>
+  </div>
+
+</div>

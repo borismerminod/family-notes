@@ -57,7 +57,7 @@ vidéo, drag & drop, auto-save.
   Contrat DOM : `.editor-title`, `.editor-category`, `.editor-content` (le contenteditable),
   `.btn-save`, `.btn-cancel`, `.spinner`, `.not-found`.
 - **Réécrire `note-editor.spec.ts`** (remplace les cas blocs).
-- **Implémenter groupe par groupe** via skill `dev_par_groupes` : à chaque groupe, tests +
+- **Implémenter groupe par groupe** via skill `dev_par_cas` : à chaque groupe, tests +
   vérification rendu réel (Browser pane) + **validation utilisateur** avant le suivant.
 
 ### Fichiers touchés

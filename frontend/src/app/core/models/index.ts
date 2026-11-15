@@ -7,3 +7,8 @@ export * from './note.model';
 export * from './note-block.model';
 export * from './block-style.model';
 export * from './category.model';
+export * from './kanban.model';
+export * from './kanban-column.model';
+export * from './kanban-card.model';
+export * from './kanban-save-result.model';
+export * from './card-text-change.model';

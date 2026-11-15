@@ -55,7 +55,7 @@ Une fois le diagramme stabilisé, je complète le fichier `.agent/PLAN_TESTS_<CI
 5. **Cas de test** groupés (`Groupe N`) et numérotés (`T1.1`, `T1.2`, …), **directement déduits des transitions/nœuds du diagramme**, un comportement observable par cas, formulé en langage métier, **relié aux user stories** de la SPEC.
 6. **Dépendances (abstraites) & doublures** : source de données, navigation, route, confirmation… décrites sans figer de signature d'API précise.
 7. **Contrat DOM** : table des sélecteurs ciblés par les tests (fixe le contrat que l'implémentation devra honorer).
-8. **Ordre d'implémentation TDD suggéré** (rouge $\rightarrow$ vert, groupe par groupe).
+8. **Ordre d'implémentation TDD suggéré** (rouge $\rightarrow$ vert) : l'ordre des **groupes**, que `ecrire_tests` aplatit ensuite au grain du **cas**.
 
 ## Étape 3 — Demander validation — PUIS s'arrête
 

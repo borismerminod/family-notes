@@ -9,7 +9,7 @@ description: Fait la revue d'une fonctionnalité livrée à partir du plan de te
 > d'implémentation modifié** à ce qui était prévu (plan de test `PLAN_TESTS_*.md` + plan
 > d'implémentation `APPROCHE_*.md`, et la SPEC `FEATURE_*.md`), puis produire un **plan de
 > refactoring** priorisé et validé. Suite naturelle du skill
-> [`dev_par_groupes`](../dev_par_groupes/SKILL.md).
+> [`dev_par_cas`](../dev_par_cas/SKILL.md).
 >
 > **Invocation :** quand une réalisation est terminée (groupes verts) et que l'utilisateur
 > veut la **relire / auditer / nettoyer** (« fais la revue de la fonctionnalité X »,
@@ -113,7 +113,7 @@ sans **accord explicite**. En mode plan : `ExitPlanMode` une fois le plan stabil
 Une fois validé :
 - Passer le statut d'en-tête à *(validé le <date>)*.
 - **Ne pas** enchaîner l'implémentation des refactorings de soi-même : proposer (sans
-  l'imposer) de les réaliser — idéalement en TDD via [`dev_par_groupes`](../dev_par_groupes/SKILL.md)
+  l'imposer) de les réaliser — idéalement en TDD via [`dev_par_cas`](../dev_par_cas/SKILL.md)
   quand un refactoring touche du comportement couvert par tests, chaque `R#` validé un par un.
 - Si la revue fait ressortir un piège durable, proposer une note de **mémoire projet** +
   une ligne dans `MEMORY.md`.

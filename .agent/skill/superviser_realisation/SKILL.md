@@ -1,6 +1,6 @@
 ---
 name: superviser_realisation
-description: Transforme l'agent de la conversation en SUPERVISEUR qui pilote toute la chaîne d'implémentation d'une fonctionnalité de bout en bout, en déléguant chaque étape à un SOUS-AGENT dédié (un sous-agent par skill) : formalisation des spécifications, plan de développement, plan de test, écriture des tests, implémentation TDD par groupes de contrôle, revue + refactoring, écriture des commentaires, mise à jour du diagramme de classes. Le superviseur n'exécute PAS silencieusement : à chaque étape il lance un sous-agent, relaie à l'utilisateur les questions de cadrage / décisions D# et tout souci rencontré, et ne franchit une étape qu'après validation explicite. Invoquer quand l'utilisateur veut mener une réalisation complète (ou une portion) en mode supervisé, en orchestrant les skills existants plutôt qu'en travaillant à la main.
+description: Transforme l'agent de la conversation en SUPERVISEUR qui pilote toute la chaîne d'implémentation d'une fonctionnalité de bout en bout, en déléguant chaque étape à un SOUS-AGENT dédié (un sous-agent par skill) : formalisation des spécifications, plan de développement, plan de test, puis la boucle TDD où ecrire_tests et dev_par_cas alternent cas de test par cas de test, revue + refactoring, écriture des commentaires, mise à jour du diagramme de classes. Le superviseur n'exécute PAS silencieusement : à chaque étape il lance un sous-agent, relaie à l'utilisateur les questions de cadrage / décisions D# et tout souci rencontré, et ne franchit une étape qu'après validation explicite. Invoquer quand l'utilisateur veut mener une réalisation complète (ou une portion) en mode supervisé, en orchestrant les skills existants plutôt qu'en travaillant à la main.
 ---
 
 # Skill — Supervision d'une réalisation (orchestration des skills par sous-agents)
@@ -34,8 +34,7 @@ Le superviseur enchaîne les **skills de gestion d'implémentation** déjà pré
 | 1 | **Spécifications** | [`formaliser_demande`](../formaliser_demande/SKILL.md) | `.agent/FEATURE_<NOM>.md` |
 | 2 | **Plan de développement** (diagramme + algos) | [`approche_dev`](../approche_dev/SKILL.md) | `.agent/APPROCHE_<NOM>.md` |
 | 3 | **Plan de test** | [`plan_test`](../plan_test/SKILL.md) | `.agent/PLAN_TESTS_<CIBLE>.md` |
-| 4 | **Écriture des tests** | [`ecrire_tests`](../ecrire_tests/SKILL.md) | `<cible>.spec.ts` (rouge attendu) |
-| 5 | **Implémentation TDD par groupes** | [`dev_par_groupes`](../dev_par_groupes/SKILL.md) | code, groupe par groupe jusqu'au vert |
+| 4–5 | **Tests + implémentation en TDD**, en **alternance au grain du cas** (cf. § *La boucle de la paire*) | [`ecrire_tests`](../ecrire_tests/SKILL.md) ⇄ [`dev_par_cas`](../dev_par_cas/SKILL.md) | `<cible>.spec.ts` et code de la cible, cas `T#.x` par cas, jusqu'au vert |
 | 6 | **Revue → plan de refactoring** | [`revue_fonctionnalite`](../revue_fonctionnalite/SKILL.md) | `.agent/REVUE_<NOM>.md` |
 | 7 | **Refactoring** | [`appliquer_refactoring`](../appliquer_refactoring/SKILL.md) | code refactoré, suite toujours verte |
 | 8 | **Écriture des commentaires** | [`documenter_sources`](../documenter_sources/SKILL.md) | en-têtes JSDoc (anglais) |
@@ -133,7 +132,7 @@ Une fois la réponse de l'utilisateur obtenue, **relancer le même sous-agent** 
 (contexte préservé) avec la décision : réponse à la question de cadrage, `D#` figée, « groupe validé,
 enchaîne le suivant », « applique tel ajustement d'abord », « refactoring `R#` validé », etc.
 Répéter les points 2→4 **autant de fois** que le skill a de tours de validation internes
-(`dev_par_groupes` : groupe par groupe ; `appliquer_refactoring` : `R#` par `R#` ;
+(`appliquer_refactoring` : `R#` par `R#` ;
 `documenter_sources` : fichier par fichier ; les skills de rédaction : jusqu'à l'accord).
 
 ### 5. Clore l'étape — PUIS passer à la suivante
@@ -144,6 +143,47 @@ suite verte prouvée le cas échéant) :
   **demander explicitement** « je valide l'étape *<skill>* et j'enchaîne sur *<skill suivant>* ? ».
 - **N'ouvrir le sous-agent de l'étape suivante qu'après ce feu vert.** Ne jamais enchaîner de
   soi-même. Le nouveau sous-agent reçoit en prérequis le **livrable fraîchement validé**.
+
+## Étapes 4–5 — la boucle de la paire `ecrire_tests` ⇄ `dev_par_cas`
+
+Ces deux skills ne sont **pas** deux étapes successives : ils **alternent** jusqu'à épuisement du
+plan de test, au **grain du cas `T#.x`**.
+
+```
+superviseur ──▶ sous-agent ecrire_tests     : écrit les cas un à un, enchaîne tant qu'ils sont
+            ◀──                               verts, S'ARRÊTE au premier ROUGE et rapporte
+superviseur ──▶ sous-agent dev_par_cas      : implémente jusqu'au vert sans régression,
+            ◀──                               S'ARRÊTE et rapporte
+superviseur ──▶ sous-agent ecrire_tests     : cas suivant…
+```
+
+**Ce qui change par rapport aux autres étapes :**
+
+- **Un sous-agent neuf par tour**, et non un sous-agent maintenu vivant pour toute l'étape : les
+  deux skills se relaient, donc aucun des deux n'a de tour « suivant » immédiat. Chacun **relit
+  l'état dans les fichiers** (le `.spec.ts` dit quels cas existent, la sortie des tests dit lesquels
+  sont rouges) — ne jamais compter sur la mémoire d'un tour précédent.
+- **Le rapport de passation du tour précédent** se recopie dans le prompt de mission du suivant :
+  cas bloquant, nature du rouge, message d'échec, consigne d'implémentation.
+- **Dire à chaque sous-agent s'il peut lancer les tests lui-même** (les deux skills le demandent en
+  ouverture, à l'étape 0) : la réponse se fixe **une fois** avec l'utilisateur au cadrage, puis se
+  recopie dans chaque mission — sans quoi chaque sous-agent reposera la question.
+- **L'alternance elle-même ne se fait pas valider cas par cas**, sauf si l'utilisateur l'a demandé
+  au cadrage : c'est le mode « je ne relis pas le code ». Le superviseur **relaie quand même au fil
+  de l'eau** tout ce qui appelle une décision — décision `D#` manquante ou contredite, cas de test
+  qui contredit le plan, régression, blocage, piège builder — et **rend compte** à chaque passation
+  en une ligne (« `T1.2` rouge → implémentation → vert, 42/42 »).
+- **Fin de la boucle** : quand `ecrire_tests` rapporte le **plan épuisé, tous les cas verts**. Le
+  superviseur fait alors son point de bascule habituel avant l'étape 6 (revue).
+
+> ⚠️ Les deux skills de la paire **ne franchissent jamais la frontière de l'autre** :
+> `ecrire_tests` n'écrit aucune implémentation (pas même un squelette de cible pour débloquer la
+> compilation), `dev_par_cas` ne touche jamais au `.spec.ts`. Si un rapport laisse penser que
+> la frontière a été franchie, le signaler à l'utilisateur plutôt que de le laisser passer.
+>
+> La paire [`tdd_cas_par_cas`](../tdd_cas_par_cas/SKILL.md) +
+> [`implementer_cas`](../implementer_cas/SKILL.md) couvre le **même grain avec relecture humaine de
+> chaque cas** : elle s'utilise en direct avec l'utilisateur, pas en supervision déléguée.
 
 ## Fin de parcours
 

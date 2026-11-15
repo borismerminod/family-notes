@@ -68,7 +68,7 @@ Fichier : `.agent/APPROCHE_<NOM>.md` (ex. `APPROCHE_PARTAGE_NOTE.md`). Structure
 4. **Impacts & points d'attention** : migrations de données, effets de bord, dépendances
    entre lots, risques.
 5. **Découpage suggéré** : ordre de réalisation conseillé (ce qui alimentera `plan_test` puis
-   `dev_par_groupes`), et ce qui est **hors périmètre** de ce lot.
+   `dev_par_cas`), et ce qui est **hors périmètre** de ce lot.
 
 ## Étape 2 bis — Valider le diagramme Mermaid (obligatoire)
 

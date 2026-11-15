@@ -78,4 +78,4 @@ et le spec du composant barre d'outils.
 
 Spec : `frontend/src/app/note-editor/note-editor.spec.ts` (Vitest). Échantillons typés par un
 contrat local `{ id, title, category, content, updatedAt }` (découplé du modèle tant que le
-pivot data n'est pas fait). Implémentation ensuite via le skill `dev_par_groupes`.
+pivot data n'est pas fait). Implémentation ensuite via le skill `dev_par_cas`.

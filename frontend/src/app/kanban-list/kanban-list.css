@@ -1,0 +1,260 @@
+/* ============================================================
+   Liste des kanbans — feuille de style (mobile-first)
+   Cf. maquette : .agent/KANBAN/CRUD/MAQUETTE_KANBAN_LIST.html
+   Tokens alignés sur note-list.css (redéclarés car non globaux).
+
+   État : minimal, limité à ce que le gabarit affiche aujourd'hui
+   (groupe 6 / T6.1 à T6.4). États vide et erreur, bouton flottant et
+   popups viendront avec les groupes qui les exigent.
+   ============================================================ */
+
+:host {
+  /* Palette (alignée sur NOTE_COLOR_PALETTE / block-style.model.ts) */
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --danger: #ff3b30;
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 8px 24px rgba(0, 0, 0, .04);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #ffffff;
+    --text-2: #98989f;
+    --separator: #38383a;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  }
+}
+
+.kanban-list-container {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  min-height: 100vh;
+}
+
+/* ---- Barre supérieure (sticky) ---- */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: calc(14px + var(--safe-top)) 20px 12px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.topbar h1 {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+}
+
+.topbar .count {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* ---- Bandeau d'erreur d'action (suppression refusée) ---- */
+.action-error {
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---- Liste des tableaux ---- */
+.kanbans-list {
+  padding: 12px 16px calc(var(--navbar-height) + var(--navbar-fab-gap) + 60px + var(--navbar-fab-gap) + var(--safe-bottom));
+}
+
+/* ---- Carte tableau ---- */
+.kanban-card {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: 16px 14px 16px 18px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+/* Barre d'accent colorée, comme sur les cartes de notes. Elle y porte la couleur
+   de la catégorie ; un tableau n'en ayant pas, elle est toujours bleue. */
+.kanban-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 5px;
+  background: var(--accent);
+}
+
+.kanban-card .card-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.kanban-name {
+  margin: 0 0 4px;
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.kanban-date {
+  display: block;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+/* ---- Chargement ---- */
+.loading-overlay {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+}
+
+.loading-overlay .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- État vide ---- */
+.empty {
+  text-align: center;
+  padding: 80px 30px;
+  color: var(--text-2);
+}
+
+.empty .icon {
+  width: 54px;
+  height: 54px;
+  opacity: .4;
+}
+
+.empty p {
+  font-size: 15px;
+  margin: 12px 0 0;
+  line-height: 1.4;
+}
+
+/* ---- État d'erreur de chargement ---- */
+.error-state .icon {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.btn-retry {
+  margin-top: 16px;
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .1s ease, opacity .2s;
+}
+
+.btn-retry:active { transform: scale(0.96); }
+.btn-retry:hover { opacity: .92; }
+
+/* ---- Bouton flottant « + » ---- */
+.fab {
+  position: fixed;
+  right: max(20px, calc(50% - 360px + 20px));
+  bottom: calc(var(--navbar-height) + var(--navbar-fab-gap) + var(--safe-bottom));
+  width: 60px;
+  height: 60px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(0, 122, 255, .45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  z-index: 30;
+  transition: transform .1s ease;
+}
+
+.fab:active { transform: scale(0.94); }
+.fab .icon { width: 30px; height: 30px; }
+
+/* ---- Icônes SVG (via mask : la couleur suit le bouton) ---- */
+.icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.icon-plus { --icon: url("/icons/plus.svg"); }
+.icon-alert { --icon: url("/icons/alert.svg"); }
+.icon-kanban { --icon: url("/icons/kanban.svg"); }
+
+/* ---- Bouton d'action sur une carte ---- */
+.btn-icon {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: var(--surface-2);
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background .2s, color .2s;
+}
+
+.btn-icon .icon { width: 20px; height: 20px; }
+
+.btn-icon.btn-danger:active,
+.btn-icon.btn-danger:hover {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+
+.icon-trash { --icon: url("/icons/trash.svg"); }

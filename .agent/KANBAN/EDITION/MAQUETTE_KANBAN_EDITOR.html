@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Maquette — Écran d'édition d'un tableau Kanban (mobile)</title>
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<style>
+  /* ============================================================
+     MAQUETTE — Écran d'édition d'un tableau Kanban (mobile-first)
+     Cf. spécification : KANBAN/EDITION/FEATURE_KANBAN_EDITION.md (US1 → US5)
+     Cf. approche     : KANBAN/EDITION/APPROCHE_KANBAN_EDITION.md (D-E1 → D-E13)
+     Tokens et composants repris de MAQUETTE_KANBAN_LIST.html, note-editor.css,
+     kanban-list.css et confirm-dialog.css, pour rester cohérent avec les écrans livrés.
+
+     Les noms de classes des écrans ci-dessous sont ceux que reprendra le gabarit du
+     composant KanbanEditor : ils servent de contrat DOM au plan de test.
+     ============================================================ */
+
+  :root {
+    /* ---- Tokens identiques à note-list.css / kanban-list.css ---- */
+    --bg: #f2f2f7;
+    --surface: #ffffff;
+    --surface-2: #f2f2f7;
+    --text: #1c1c1e;
+    --text-2: #8e8e93;
+    --separator: #e5e5ea;
+    --accent: #007aff;
+    --danger: #ff3b30;
+    --radius: 16px;
+    --shadow: 0 1px 3px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.04);
+    --shadow-pop: 0 1px 3px rgba(0,0,0,.06), 0 12px 40px rgba(0,0,0,.18);
+
+    /* ---- Palette d'accent (NOTE_COLOR_PALETTE) ---- */
+    --c-rouge: #ff3b30;
+    --c-orange: #ff9500;
+    --c-vert: #34c759;
+    --c-bleu: #007aff;
+    --c-violet: #af52de;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --surface-2: #2c2c2e;
+      --text: #ffffff;
+      --text-2: #98989f;
+      --separator: #38383a;
+      --shadow: 0 1px 3px rgba(0,0,0,.4);
+      --shadow-pop: 0 1px 3px rgba(0,0,0,.5), 0 12px 40px rgba(0,0,0,.6);
+    }
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #d8d8dc;
+    color: var(--text);
+    padding: 32px 16px 48px;
+  }
+  @media (prefers-color-scheme: dark) { body { background: #111113; } }
+
+  /* ---- Présentation des écrans (hors maquette) ---- */
+  .board-title {
+    text-align: center;
+    margin: 0 0 6px;
+    font-size: 22px;
+    color: var(--text);
+  }
+  .board-sub {
+    text-align: center;
+    margin: 0 auto 32px;
+    max-width: 680px;
+    font-size: 14px;
+    color: var(--text-2);
+    line-height: 1.5;
+  }
+  .screens {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 48px 40px;
+  }
+  .screen { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+  .screen-label {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-2);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+  }
+  .screen-label b { color: var(--accent); }
+
+  /* ---- Cadre téléphone (uniquement pour la maquette) ---- */
+  .phone {
+    width: 375px;
+    max-width: calc(100vw - 56px);
+    height: 700px;
+    background: var(--bg);
+    border-radius: 44px;
+    box-shadow: 0 0 0 12px #1a1a1c, 0 24px 60px rgba(0,0,0,.35);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ============================================================
+     Contrat DOM de l'écran — classes reprises par KanbanEditor
+     ============================================================ */
+
+  .kanban-editor {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* ---- Barre de navigation : Retour · titre · Enregistrer (D-E5) ---- */
+  .editor-navbar {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 12px 10px;
+    background: color-mix(in srgb, var(--bg) 85%, transparent);
+    border-bottom: 0.5px solid var(--separator);
+  }
+  .editor-navbar-title {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    font-size: 16px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .btn-nav {
+    flex: 0 0 auto;
+    border: none;
+    background: transparent;
+    color: var(--accent);
+    font-size: 16px;
+    padding: 6px 4px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+  }
+  .btn-nav .material-icons { font-size: 22px; margin-left: -6px; }
+  .btn-nav.btn-save { font-weight: 700; }
+
+  /* ---- Bandeau d'erreur non bloquant (US5, D-E9) ---- */
+  .action-error {
+    margin: 12px 16px 0;
+    padding: 10px 14px;
+    border-radius: 12px;
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+    color: var(--danger);
+    font-size: 14px;
+    font-weight: 600;
+  }
+
+  /* ---- En-tête : nom du tableau (repris de .editor-title) ---- */
+  .editor-head {
+    flex: 0 0 auto;
+    padding: 18px 20px 16px;
+    background: var(--surface);
+    border-bottom: 0.5px solid var(--separator);
+  }
+  .editor-name {
+    display: block;
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.4px;
+    padding: 0;
+  }
+  .editor-name::placeholder { color: var(--text-2); opacity: .6; }
+  /* Soulignement de focus : montre que le champ est actif sans encadrer le titre */
+  .editor-head.demo-focus { box-shadow: inset 0 -2px 0 var(--accent); }
+
+  /* Étiquette lue par les lecteurs d'écran, invisible à l'œil (accessibilité) */
+  .sr-only {
+    position: absolute;
+    width: 1px; height: 1px;
+    padding: 0; margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  /* ---- Zone de contenu du tableau, vide dans ce lot (D-E11) ---- */
+  .board-canvas {
+    flex: 1;
+    display: flex;
+    gap: 12px;
+    padding: 16px;
+    overflow: hidden;
+  }
+  .ghost-column {
+    flex: 0 0 200px;
+    border: 2px dashed var(--separator);
+    border-radius: var(--radius);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 20px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 14px;
+  }
+  .ghost-column .material-icons { font-size: 40px; opacity: .4; }
+  .ghost-column small { font-size: 12px; opacity: .8; }
+  .ghost-column.faded { opacity: .45; }
+
+  /* ---- Chargement (repris de kanban-list.css) ---- */
+  .loading-overlay {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .loading-overlay .spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid var(--separator);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---- État d'erreur de chargement (repris de kanban-list.css) ---- */
+  .empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 30px;
+    color: var(--text-2);
+  }
+  .empty .material-icons { font-size: 54px; opacity: .4; }
+  .empty p { font-size: 15px; margin: 12px 0 0; line-height: 1.4; }
+  .error-state .material-icons { color: var(--danger); opacity: 1; }
+  .btn-retry {
+    margin-top: 16px;
+    border: none;
+    border-radius: 12px;
+    padding: 10px 20px;
+    background: var(--accent);
+    color: #fff;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  /* ---- Popup de confirmation (composant ConfirmDialog, inchangé) ---- */
+  .backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(0,0,0,.35);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+  .dialog-card {
+    width: 100%;
+    max-width: 320px;
+    background: var(--surface);
+    color: var(--text);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-pop);
+    padding: 24px 20px 16px;
+    text-align: center;
+  }
+  .dialog-message { margin: 0 0 20px; font-size: 16px; line-height: 1.4; }
+  .dialog-actions { display: flex; gap: 10px; }
+  .btn {
+    flex: 1;
+    min-height: 44px;
+    padding: 11px 14px;
+    border: none;
+    border-radius: 12px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .btn-cancel { background: var(--separator); color: var(--text); }
+  .btn-confirm { background: var(--accent); color: #fff; }
+
+  /* ---- Notes de conception sous chaque écran ---- */
+  .notes {
+    width: 375px;
+    max-width: calc(100vw - 56px);
+    margin: 4px 0 0;
+    padding-left: 18px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text-2);
+  }
+  .notes code {
+    font-size: 12px;
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+    border-radius: 4px;
+    padding: 1px 4px;
+  }
+  .notes .arbitrer { color: var(--danger); font-weight: 600; }
+</style>
+</head>
+<body>
+
+  <h2 class="board-title">Maquette — Écran d'édition d'un tableau Kanban</h2>
+  <p class="board-sub">
+    Un seul composant <code>KanbanEditor</code> pour les deux routes <code>/kanban/new</code> et
+    <code>/kanban/edit/:id</code> (D-E8). Styles repris de l'éditeur de notes (note-editor.css),
+    de la liste des tableaux (kanban-list.css) et de la popup ConfirmDialog.
+    Chaque écran correspond à un état de FEATURE_KANBAN_EDITION.md.
+  </p>
+
+  <div class="screens">
+
+    <!-- ========== Écran 1 : tableau neuf (US2) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US2</b> · Nouveau tableau</span>
+      <div class="phone">
+        <div class="kanban-editor">
+          <header class="editor-navbar">
+            <button class="btn-nav btn-back" aria-label="Retour à la liste des tableaux">
+              <span class="material-icons">chevron_left</span>Retour
+            </button>
+            <span class="editor-navbar-title">Nouveau tableau</span>
+            <button class="btn-nav btn-save">Enregistrer</button>
+          </header>
+
+          <div class="editor-head demo-focus">
+            <label class="sr-only" for="new-board-name">Nom du tableau</label>
+            <input id="new-board-name" class="editor-name" type="text" value="" placeholder="Sans titre">
+          </div>
+
+          <div class="board-canvas">
+            <div class="ghost-column">
+              <span class="material-icons">view_column</span>
+              Ce tableau est vide.
+              <small>Les listes et les cartes arriveront dans un prochain lot.</small>
+            </div>
+            <div class="ghost-column faded"></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Ouvert par le bouton « + » de la liste, route <code>/kanban/new</code>.</li>
+        <li>Champ <b>vide</b>, « Sans titre » en simple indication : le repli se fait à l'enregistrement (D-E2).</li>
+        <li>« Enregistrer » n'est <b>jamais grisé</b> — écart assumé avec la popup du lot précédent.</li>
+        <li>Ouvrir cet écran n'écrit rien en base ; en repartir ne laisse aucun tableau (D-K11).</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 2 : tableau existant (US1, US3) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US1 · US3</b> · Tableau existant</span>
+      <div class="phone">
+        <div class="kanban-editor">
+          <header class="editor-navbar">
+            <button class="btn-nav btn-back" aria-label="Retour à la liste des tableaux">
+              <span class="material-icons">chevron_left</span>Retour
+            </button>
+            <span class="editor-navbar-title">Modifier le tableau</span>
+            <button class="btn-nav btn-save">Enregistrer</button>
+          </header>
+
+          <div class="editor-head">
+            <label class="sr-only" for="edit-board-name">Nom du tableau</label>
+            <input id="edit-board-name" class="editor-name" type="text" value="Travaux de la maison">
+          </div>
+
+          <div class="board-canvas">
+            <div class="ghost-column">
+              <span class="material-icons">view_column</span>
+              Ce tableau est vide.
+              <small>Les listes et les cartes arriveront dans un prochain lot.</small>
+            </div>
+            <div class="ghost-column faded"></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Ouvert en touchant une carte de la liste, route <code>/kanban/edit/:id</code>.</li>
+        <li>Champ pré-rempli avec le nom actuel, qui devient le <b>nom de départ</b> (D-E3).</li>
+        <li>Enregistrer met à jour le nom <b>et</b> la date de modification : le tableau remonte en tête de liste.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 3 : chargement (US1) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US1</b> · Chargement</span>
+      <div class="phone">
+        <div class="kanban-editor">
+          <header class="editor-navbar">
+            <button class="btn-nav btn-back" aria-label="Retour à la liste des tableaux">
+              <span class="material-icons">chevron_left</span>Retour
+            </button>
+            <span class="editor-navbar-title">Modifier le tableau</span>
+            <button class="btn-nav btn-save">Enregistrer</button>
+          </header>
+
+          <div class="loading-overlay">
+            <div class="spinner"></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Visible uniquement en mode édition, le temps que la base réponde : un tableau neuf n'attend rien.</li>
+        <li>Même indicateur que la liste des tableaux et que l'éditeur de notes.</li>
+        <li><b>Identifiant inexistant</b> : aucun écran intermédiaire, retour immédiat à la liste (D-E4).</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 4 : abandon d'une saisie (US4) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US4</b> · Abandon de la saisie</span>
+      <div class="phone">
+        <div class="kanban-editor">
+          <header class="editor-navbar">
+            <button class="btn-nav btn-back" aria-label="Retour à la liste des tableaux">
+              <span class="material-icons">chevron_left</span>Retour
+            </button>
+            <span class="editor-navbar-title">Modifier le tableau</span>
+            <button class="btn-nav btn-save">Enregistrer</button>
+          </header>
+
+          <div class="editor-head">
+            <label class="sr-only" for="dirty-board-name">Nom du tableau</label>
+            <input id="dirty-board-name" class="editor-name" type="text" value="Travaux du garage">
+          </div>
+
+          <div class="board-canvas">
+            <div class="ghost-column">
+              <span class="material-icons">view_column</span>
+              Ce tableau est vide.
+              <small>Les listes et les cartes arriveront dans un prochain lot.</small>
+            </div>
+            <div class="ghost-column faded"></div>
+          </div>
+        </div>
+
+        <!-- Composant ConfirmDialog existant, sans changement -->
+        <div class="backdrop">
+          <div class="dialog-card" role="dialog" aria-modal="true">
+            <p class="dialog-message">Vos modifications ne seront pas enregistrées. Quitter ce tableau ?</p>
+            <div class="dialog-actions">
+              <button class="btn btn-cancel">Annuler</button>
+              <button class="btn btn-confirm">Quitter</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Déclenchée par « Retour » <b>uniquement</b> si le nom diffère du nom de départ (D-E3).</li>
+        <li>Sans modification en attente, « Retour » ramène à la liste <b>sans poser de question</b>.</li>
+        <li>« Annuler », un clic hors de la popup ou Échap : on reste ici, saisie intacte.</li>
+        <li>« Quitter » : retour à la liste sans rien enregistrer.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 5 : échec de l'enregistrement (US5) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US5</b> · Enregistrement en échec</span>
+      <div class="phone">
+        <div class="kanban-editor">
+          <header class="editor-navbar">
+            <button class="btn-nav btn-back" aria-label="Retour à la liste des tableaux">
+              <span class="material-icons">chevron_left</span>Retour
+            </button>
+            <span class="editor-navbar-title">Nouveau tableau</span>
+            <button class="btn-nav btn-save">Enregistrer</button>
+          </header>
+
+          <p class="action-error" role="alert">Impossible d'enregistrer le tableau.</p>
+
+          <div class="editor-head">
+            <label class="sr-only" for="failed-board-name">Nom du tableau</label>
+            <input id="failed-board-name" class="editor-name" type="text" value="Anniversaire de Léa">
+          </div>
+
+          <div class="board-canvas">
+            <div class="ghost-column">
+              <span class="material-icons">view_column</span>
+              Ce tableau est vide.
+              <small>Les listes et les cartes arriveront dans un prochain lot.</small>
+            </div>
+            <div class="ghost-column faded"></div>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>L'utilisateur <b>reste</b> sur l'écran, le nom saisi est toujours là : rien n'est retapé.</li>
+        <li>Message <b>visible</b>, pas seulement dans la console (D-E9) — même bandeau que la liste.</li>
+        <li>Effacé au début de la tentative suivante ; rien n'a été créé ni modifié en base.</li>
+        <li>La modification reste « en attente » : « Retour » demandera toujours confirmation.</li>
+      </ul>
+    </section>
+
+    <!-- ========== Écran 6 : erreur de chargement (US1) ========== -->
+    <section class="screen">
+      <span class="screen-label"><b>US1</b> · Chargement en échec</span>
+      <div class="phone">
+        <div class="kanban-editor">
+          <header class="editor-navbar">
+            <button class="btn-nav btn-back" aria-label="Retour à la liste des tableaux">
+              <span class="material-icons">chevron_left</span>Retour
+            </button>
+            <span class="editor-navbar-title">Modifier le tableau</span>
+          </header>
+
+          <div class="empty error-state">
+            <span class="material-icons">error_outline</span>
+            <p>Impossible de charger ce tableau.</p>
+            <button class="btn-retry">Revenir à la liste</button>
+          </div>
+        </div>
+      </div>
+      <ul class="notes">
+        <li>Le spinner laisse la place au message : l'écran ne reste jamais bloqué dessus.</li>
+        <li>Pas de champ ni de bouton « Enregistrer » : il n'y a rien à enregistrer.</li>
+        <li>Le retour est <b>immédiat</b>, sans popup : aucune saisie à perdre.</li>
+        <li class="arbitrer">À trancher : « Revenir à la liste » seul, ou avec un bouton « Réessayer » comme sur la liste ?</li>
+      </ul>
+    </section>
+
+  </div>
+
+</body>
+</html>

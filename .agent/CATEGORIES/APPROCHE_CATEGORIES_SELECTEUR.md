@@ -239,7 +239,7 @@ classDiagram
 
 ## 5. Découpage suggéré
 
-Ordre de réalisation (chaque lot est testable indépendamment — alimentera `plan_test` puis `dev_par_groupes`) :
+Ordre de réalisation (chaque lot est testable indépendamment — alimentera `plan_test` puis `dev_par_cas`) :
 
 1. **Lot 1** — migration & table `categories` (fondations, testable sur web store).
 2. **Lot 2** — `CategoriesService` (CRUD + `getOrCreate`, tests purs).

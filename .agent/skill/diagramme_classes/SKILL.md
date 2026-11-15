@@ -10,7 +10,7 @@ description: Fait la revue d'un développement livré (fichiers modifiés pendan
 > montre, sous forme de **diagramme Mermaid `classDiagram`**, les **classes / interfaces / types
 > réels** du code livré — leurs **attributs**, leurs **méthodes** et les **relations** qui les
 > lient (héritage, composition, agrégation, dépendance, injection). Suite naturelle de
-> [`dev_par_groupes`](../dev_par_groupes/SKILL.md), [`revue_fonctionnalite`](../revue_fonctionnalite/SKILL.md)
+> [`dev_par_cas`](../dev_par_cas/SKILL.md), [`revue_fonctionnalite`](../revue_fonctionnalite/SKILL.md)
 > et [`documenter_sources`](../documenter_sources/SKILL.md).
 >
 > **Invocation :** quand une réalisation est terminée (groupes verts) et que l'utilisateur veut
@@ -28,7 +28,7 @@ description: Fait la revue d'un développement livré (fichiers modifiés pendan
 ## Prérequis
 
 - Un développement **terminé** dont le code a été livré (idéalement suite de tests verte à la
-  sortie de [`dev_par_groupes`](../dev_par_groupes/SKILL.md)).
+  sortie de [`dev_par_cas`](../dev_par_cas/SKILL.md)).
 - Les **docs de cadrage**, pour connaître l'intention et le vocabulaire du domaine (mais le
   diagramme reflète le **code**, pas ces docs) :
   - la **SPEC** (`.agent/FEATURE_<NOM>.md`), le **plan d'implémentation** (`.agent/APPROCHE_<NOM>.md`,

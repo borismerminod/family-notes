@@ -1,0 +1,440 @@
+/* ============================================================
+   Kanban board editor — stylesheet (mobile-first)
+   Mockup: .agent/KANBAN/EDITION/MAQUETTE_KANBAN_EDITOR.html (screen 1)
+   Tokens aligned on kanban-list.css / note-list.css (redeclared, as they are not global).
+
+   Icons: the project's own SVG files (frontend/public/icons) drawn as masks, the
+   way the board list does it — no Material Icons font, which is loaded nowhere
+   in the application.
+   ============================================================ */
+
+:host {
+  /* Palette (aligned on NOTE_COLOR_PALETTE / block-style.model.ts) */
+  --bg: #f2f2f7;
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --danger: #ff3b30;
+  --radius: 16px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --text: #ffffff;
+    --text-2: #98989f;
+    --separator: #38383a;
+  }
+}
+
+.kanban-editor {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* ---- Navigation bar: Back · title · Save (D-E5) ---- */
+.editor-navbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: calc(14px + var(--safe-top)) 12px 10px;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: saturate(180%) blur(20px);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.btn-nav {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: var(--accent);
+  font-size: 16px;
+  padding: 6px 4px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+.btn-nav:active { opacity: .6; }
+
+.btn-nav.btn-save { font-weight: 700; }
+
+.editor-navbar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Failed save banner (US5, D-E9) ---- */
+.action-error {
+  flex: 0 0 auto;
+  margin: 12px 16px 0;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* ---- Header: the board name ---- */
+.editor-head {
+  flex: 0 0 auto;
+  padding: 18px 20px 16px;
+  background: var(--surface);
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.editor-name {
+  display: block;
+  width: 100%;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: -0.4px;
+  padding: 0;
+}
+
+.editor-name::placeholder {
+  color: var(--text-2);
+  opacity: .6;
+}
+
+/* Focus underline: shows the field is active without boxing the title in */
+.editor-head:focus-within {
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+/* Label read by screen readers, invisible to the eye (accessibility) */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Loading (taken from kanban-list.css) ---- */
+.loading-overlay {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.loading-overlay .spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ---- Unknown identifier and load error states (taken from kanban-list.css) ---- */
+.empty {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 30px;
+  color: var(--text-2);
+}
+
+.empty p {
+  font-size: 15px;
+  margin: 12px 0 0;
+  line-height: 1.4;
+}
+
+.empty .icon {
+  width: 54px;
+  height: 54px;
+  opacity: .4;
+}
+
+/* The load error is the only state drawing its icon in the danger colour, at full strength: a
+   missing board is an answer, a failed read is a fault. */
+.error-state .icon {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.btn-retry,
+.btn-back-to-list {
+  border: none;
+  border-radius: 12px;
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform .1s ease, opacity .2s;
+}
+
+.btn-retry {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-back-to-list {
+  background: var(--separator);
+  color: var(--text);
+}
+
+.btn-retry:active,
+.btn-back-to-list:active { transform: scale(0.96); }
+
+.btn-retry:hover,
+.btn-back-to-list:hover { opacity: .92; }
+
+/* ---- Board content area: the lists, side by side, scrolling horizontally (US1) ---- */
+.board-canvas {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 16px;
+  padding: 16px 16px calc(16px + var(--safe-bottom));
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* ---- Empty state of a board without any list, on the model of the board list ---- */
+.no-columns {
+  flex: 0 0 auto;
+  align-self: center;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.no-columns .icon {
+  width: 40px;
+  height: 40px;
+  opacity: .4;
+}
+
+/* ---- One list and its two move buttons, which the editor renders under it (D-L23) ---- */
+
+/* A list keeps its own width whatever the room left in the content area: it is the area that
+   scrolls, never the list that gets squeezed — a squeezed slot lets the list overflow it, and the
+   controls end up drawn over the next list. The width is fixed here and here only: a long name is
+   ellipsized by the list header rather than stretching its slot. */
+.column-slot {
+  flex: 0 0 auto;
+  width: min(calc(100vw - 48px), 280px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* The list fills the height left above its move buttons */
+.column-slot app-kanban-column {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* The two move buttons share the width of their list, under it: the gutter between two lists
+   stays empty, which is what makes them read as two separate cards. */
+.column-move {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 8px;
+}
+
+.btn-move {
+  flex: 1 1 0;
+  height: 48px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-move:disabled {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+  opacity: .35;
+  cursor: default;
+}
+
+/* ---- In-place field of a new list, in place of the add gesture (D-L18) ---- */
+.new-column {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 2px dashed var(--separator);
+  border-radius: var(--radius);
+}
+
+.new-column-name {
+  width: 48vw;
+  max-width: 200px;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  font-family: inherit;
+}
+
+/* Sized for a thumb, and drawn as buttons: a bare glyph of 36px is both hard to see and hard to
+   hit on a phone, as the move buttons were. */
+.btn-column-action {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-add-confirm { color: var(--accent); }
+
+/* ---- The add gesture, at the far right of the lists ---- */
+.btn-add-column {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  width: 44px;
+  height: 44px;
+  border: 2px dashed var(--separator);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-2);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* ---- SVG icons (drawn as masks, so the colour follows the text), as on the list ---- */
+.icon {
+  display: inline-block;
+  flex: 0 0 auto;
+  background-color: currentColor;
+  -webkit-mask: var(--icon) center / contain no-repeat;
+  mask: var(--icon) center / contain no-repeat;
+}
+
+.icon-kanban { --icon: url("/icons/kanban.svg"); }
+.icon-alert { --icon: url("/icons/alert.svg"); }
+
+/* ---- Draft of a new card, in the slot of the list it targets (D-C29) ---- */
+/* Dashed like the draft of a new list, so that both read as « not there yet », and sized to the
+   width of the slot: the field sits under the pile the card will join. It lays its children on
+   **two lines** — the field above, the three choices below — a field sharing its line with them
+   being too narrow to read what is being typed. */
+.new-card {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border: 2px dashed var(--separator);
+  border-radius: var(--radius);
+}
+
+.new-card-text {
+  flex: 1 1 100%;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 16px;
+  font-family: inherit;
+}
+
+/* Sized for a thumb, as the buttons of a new list are: a bare glyph is hard to hit on a phone. */
+.btn-card-action {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.btn-new-card-confirm { color: var(--accent); }
+
+/* The reference control of the draft, drawn as the one a card carries: a text the thumb can hit,
+   not a glyph. It closes the row of choices and takes the width the two buttons leave. */
+.btn-new-card-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--separator);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--accent);
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
