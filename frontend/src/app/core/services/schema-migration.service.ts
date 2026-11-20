@@ -22,6 +22,10 @@ const SCRIPTS = {
   kanbanColumns: 'schema_kanban_columns.sql',
   /** Table `kanban_cards` (the cards of a column, referencing `kanban_columns` and `notes`). */
   kanbanCards: 'schema_kanban_cards.sql',
+  /** Table `events` (calendar events), complete with its `note_id` reference, for a database without it. */
+  events: 'schema_events.sql',
+  /** Adds the `note_id` reference to an `events` table that predates it (the seed's one). */
+  eventsNote: 'migration_events_note.sql',
 } as const;
 
 /**
@@ -47,10 +51,10 @@ const SCRIPTS = {
 export class SchemaMigrationService {
   /**
    * Amène la base au schéma courant : notes et catégories relationnelles, table `kanbans`, table
-   * `kanban_columns`, puis table `kanban_cards`. Les quatre étapes sont **indépendantes** et
-   * jouées dans cet ordre, qui est celui des dépendances — `kanban_columns` référence `kanbans`,
-   * et `kanban_cards` référence `kanban_columns` **et** `notes` — et chacune ne fait rien si ce
-   * qu'elle apporte est déjà en place.
+   * `kanban_columns`, table `kanban_cards`, puis table `events` avec sa référence de note. Les cinq
+   * étapes sont **indépendantes** et jouées dans cet ordre, qui est celui des dépendances —
+   * `kanban_columns` référence `kanbans`, `kanban_cards` référence `kanban_columns` **et** `notes`,
+   * et `events` référence `notes` — et chacune ne fait rien si ce qu'elle apporte est déjà en place.
    * @param db La connexion ouverte à migrer.
    * @returns Une promesse résolue à `true` si **au moins une** étape a modifié le schéma
    * (l'appelant doit alors flusher le store), `false` si la base était déjà à jour.
@@ -60,12 +64,14 @@ export class SchemaMigrationService {
     const kanbanTableCreated = await this.ensureKanbanTable(db);
     const kanbanColumnsTableCreated = await this.ensureKanbanColumnsTable(db);
     const kanbanCardsTableCreated = await this.ensureKanbanCardsTable(db);
+    const eventsTableMigrated = await this.ensureEventsTable(db);
 
     return (
       relationalNotesCreated ||
       kanbanTableCreated ||
       kanbanColumnsTableCreated ||
-      kanbanCardsTableCreated
+      kanbanCardsTableCreated ||
+      eventsTableMigrated
     );
   }
 
@@ -137,6 +143,36 @@ export class SchemaMigrationService {
    */
   protected async ensureKanbanCardsTable(db: SQLiteDBConnection): Promise<boolean> {
     return this.createTableIfMissing(db, 'kanban_cards', SCRIPTS.kanbanCards);
+  }
+
+  /**
+   * Step 5 — the calendar events and their optional reference to a note (D-EV8, D-EV9). It comes
+   * after the kanban steps because `note_id` references `notes`, which the first step guarantees.
+   *
+   * Until this batch the `events` table only existed through the binary seed, and without
+   * `note_id`. Three databases are therefore possible: one **without** the table, which receives
+   * the complete schema (`schema_events.sql`); one holding the table **without** `note_id` — the
+   * seed's, so a fresh install as well as a device installed before this batch — which receives the
+   * column (`migration_events_note.sql`); and one already holding `note_id`, left untouched. The
+   * column check is what keeps the `ALTER TABLE` script from being replayed, since `ADD COLUMN`
+   * fails on an existing column.
+   * @param db The connection to migrate.
+   * @returns A promise resolving to `true` if the table was created or given its `note_id` column.
+   */
+  protected async ensureEventsTable(db: SQLiteDBConnection): Promise<boolean> {
+    const tableCreated: boolean = await this.createTableIfMissing(db, 'events', SCRIPTS.events);
+    if (tableCreated) {
+      return true;
+    }
+
+    const eventColumns: string[] = await this.tableColumns(db, 'events');
+    const hasNoteReference: boolean = eventColumns.includes('note_id');
+    if (hasNoteReference) {
+      return false;
+    }
+
+    await this.runScript(db, SCRIPTS.eventsNote);
+    return true;
   }
 
   /**
