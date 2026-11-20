@@ -116,7 +116,7 @@ interface Deferred<T> {
  * @returns The event.
  */
 function makeEvent(id: string, date: string, title: string, startTime: string = ''): CalendarEvent {
-  return { id, title, date, start_time: startTime, end_time: '', noteIds: [] };
+  return { id, title, date, start_time: startTime, end_time: '', note: null };
 }
 
 /**

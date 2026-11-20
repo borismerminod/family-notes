@@ -41,8 +41,9 @@ qui le font sont réécrits sur la table simulée (`D2`).
   `SchemaMigrationService.ensureEventsTable`) : un second plan, avec la vérification sur `sql.js`.
 - **Lot G — intégration dans `Calendar`** (toucher une case ouvre la popup, `saved` relit la
   grille) : même second plan.
-- **`NoteReferenceResolver` testé seul** : ses comportements sont observés **à travers**
-  `CalendarService` (E7, E8), avec le vrai résolveur et un double de `NotesService`.
+- **La résolution des notes testée seule** : elle vit en méthodes privées de `CalendarService`
+  (`D-EV12` révisée le 2026-11-20), et ses comportements sont observés **à travers** ses lectures
+  (E7, E8), avec un double de `NotesService`.
 - **Le vrai rollback d'une transaction** : retiré du plan le 2026-11-19 à la demande de
   l'utilisateur (ancien effet E21, ancienne cause C25, ancien cas T2.15). Le critère d'`US9` « un
   échec n'enregistre pas à moitié » repose sur la transaction de l'approche (`D-EV14`) et sur la
@@ -768,7 +769,7 @@ graph LR
 
 | # | Décision | Impact sur les assertions |
 |---|---|---|
-| **D1** | **Banc du service** : `CalendarService` est construit avec un double de `DatabaseService` (`connect`, `persist`) et un double de `NotesService` (`getNoteById`), et le **vrai** `NoteReferenceResolver`. Chaque `TestBed` reconstruit redonne **toutes** les doublures (mémoire `run-frontend-tests`). | E7 se lit au nombre d'appels de `getNoteById`. E23 se lit au nombre d'appels de `persist`. *(à confirmer)* |
+| **D1** | **Banc du service** : `CalendarService` est construit avec un double de `DatabaseService` (`connect`, `persist`) et un double de `NotesService` (`getNoteById`), que le service interroge directement (`D-EV12`). Chaque `TestBed` reconstruit redonne **toutes** les doublures (mémoire `run-frontend-tests`). | E7 se lit au nombre d'appels de `getNoteById`. E23 se lit au nombre d'appels de `persist`. *(à confirmer)* |
 | **D2** | **Table simulée** : la connexion doublée tient une table `events` en mémoire, comme `kanban-card-service.spec.ts`. `query` filtre par date ou par intervalle. `executeSet` applique l'ensemble des ordres **tout ou rien**, en appliquant les règles de la vraie table (texte non vide, heure `NULL` ou `HH:mm`, fin ⇒ début, début < fin) : un ordre refusé rejette l'appel sans rien appliquer. Les cas assertent les **lignes relues**, jamais le SQL. | E11 → E19, E24 sont observés en relisant la table. E16 échoue si une heure vide est écrite `''`, parce que la table simulée la refuse. *(à confirmer)* |
 | **D3** | *Retirée le 2026-11-19, avec le cas T2.15 qu'elle encadrait (vérification du rollback sur `sql.js`).* | — |
 | **D4** | **Erreur de refus** : un changeSet invalide fait **rejeter** `saveEventChanges` (promesse rejetée), avant tout `executeSet`. | T2.9 attend un rejet, puis une table inchangée. *(à confirmer)* |
@@ -1007,7 +1008,7 @@ graph LR
 |---|---|---|
 | `CalendarService` | Connexion SQLite | Double de `DatabaseService` dont `connect()` rend une connexion simulée : table `events` en mémoire, `query` filtrant, `executeSet` tout ou rien (`D2`) |
 | `CalendarService` | Sauvegarde du store | `persist` de ce même double, compté (E20, E23) |
-| `CalendarService` | Notes référencées | Double de `NotesService` : `getNoteById` rend la note, `null`, ou rejette ; appels comptés (E7, E8). `NoteReferenceResolver` est le vrai |
+| `CalendarService` | Notes référencées | Double de `NotesService` : `getNoteById` rend la note, `null`, ou rejette ; appels comptés (E7, E8) |
 | Module pur | — | Aucune : fonctions appelées directement |
 | `CalendarEventItem` | — | Aucune : composant hôte de test (`D12`) |
 | `CalendarEventPanels` | Événements | Double de `CalendarService` : `getEventsFromDate`, `saveEventChanges`, promesses pilotées (`D10`) |

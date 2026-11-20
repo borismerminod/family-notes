@@ -1,0 +1,202 @@
+/* ============================================================
+   Popup of the events of one date — stylesheet (mobile-first)
+   Tokens aligned on confirm-dialog.css and note-picker.css
+   (redeclared, as they are not global).
+
+   Layering (D-EV1, D-EV26): the overlay covers the calendar and the
+   navigation bar (z-index 25), and stays under the note picker and
+   the confirmations it hosts (z-index 1000).
+   ============================================================ */
+
+:host {
+  --surface: #ffffff;
+  --panel-background: #f2f2f7;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --danger: #ff3b30;
+  --radius: 16px;
+  --shadow: 0 1px 3px rgba(0, 0, 0, .06), 0 12px 40px rgba(0, 0, 0, .18);
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :host {
+    --surface: #1c1c1e;
+    --panel-background: #000000;
+    --text: #ffffff;
+    --text-2: #98989f;
+    --separator: #38383a;
+    --shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 12px 40px rgba(0, 0, 0, .6);
+  }
+}
+
+/* ---- Full-screen backdrop: a click on it is « Fermer » ---- */
+.event-panels-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + var(--safe-top)) 16px calc(16px + var(--safe-bottom));
+  background: rgba(0, 0, 0, .35);
+}
+
+/* ---- Panel: header, scrolling body, footer ---- */
+.event-panels {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 480px;
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--panel-background);
+  color: var(--text);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.event-panels-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 16px 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--separator);
+}
+
+/* The date reads « jeudi 19 novembre 2026 »: its first letter is raised for display only. */
+.event-panels-title {
+  flex: 1;
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.event-panels-title::first-letter {
+  text-transform: uppercase;
+}
+
+.btn-close-events {
+  min-height: 44px;
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--accent);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.event-panels-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 16px;
+}
+
+.event-panels-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.event-panels-empty {
+  margin: 8px 0 16px;
+  text-align: center;
+  color: var(--text-2);
+  font-size: 15px;
+}
+
+.btn-add-event {
+  width: 100%;
+  min-height: 44px;
+  margin-top: 12px;
+  border: 1px dashed var(--separator);
+  border-radius: 12px;
+  background: none;
+  color: var(--accent);
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.event-panels-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  background: var(--surface);
+  border-top: 1px solid var(--separator);
+}
+
+.event-panels-entry-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  text-align: center;
+}
+
+.btn-save-events {
+  min-height: 44px;
+  border: none;
+  border-radius: 12px;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+
+.btn-save-events:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+/* ---- Read and save failures ---- */
+.event-panels-load-error,
+.event-panels-save-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.event-panels-load-error {
+  padding: 24px 16px;
+  text-align: center;
+}
+
+/* ---- Loading indicator ---- */
+.event-panels-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 0;
+}
+
+.event-panels-loading .spinner {
+  width: 32px;
+  height: 32px;
+  border: 4px solid var(--separator);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: event-panels-spin 1s linear infinite;
+}
+
+@keyframes event-panels-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .event-panels-loading .spinner {
+    animation-duration: 3s;
+  }
+}

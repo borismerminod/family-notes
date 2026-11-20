@@ -1,0 +1,116 @@
+<div class="event-item">
+  @if (isEditing()) {
+    <div class="event-entry">
+      <label class="sr-only" [for]="'event-entry-title-' + event().id">Texte de l'événement</label>
+      <input
+        [id]="'event-entry-title-' + event().id"
+        type="text"
+        class="event-entry-title"
+        [value]="typedEntry().title"
+        (input)="onTitleTyped($any($event.target).value)"
+      />
+      @for (message of issueMessagesOf('title'); track message) {
+        <p class="event-issue" role="alert">{{ message }}</p>
+      }
+
+      <label class="sr-only" [for]="'event-entry-date-' + event().id">Date de l'événement</label>
+      <input
+        [id]="'event-entry-date-' + event().id"
+        type="date"
+        class="event-entry-date"
+        [value]="typedEntry().date"
+        (input)="onDateTyped($any($event.target).value)"
+      />
+      @for (message of issueMessagesOf('date'); track message) {
+        <p class="event-issue" role="alert">{{ message }}</p>
+      }
+
+      <div class="event-entry-times">
+        <label class="event-entry-time-label">
+          Début
+          <input
+            type="time"
+            class="event-entry-start"
+            [value]="typedEntry().startTime"
+            (input)="onStartTimeTyped($any($event.target).value)"
+          />
+        </label>
+        <label class="event-entry-time-label">
+          Fin
+          <input
+            type="time"
+            class="event-entry-end"
+            [value]="typedEntry().endTime"
+            (input)="onEndTimeTyped($any($event.target).value)"
+          />
+        </label>
+      </div>
+      @for (message of issueMessagesOf('times'); track message) {
+        <p class="event-issue" role="alert">{{ message }}</p>
+      }
+
+      <div class="event-entry-actions">
+        <button
+          type="button"
+          class="btn-entry btn-entry-confirm"
+          (click)="onEntryValidated()"
+          [attr.aria-label]="'Valider la saisie de l\'événement « ' + event().title + ' »'"
+        >
+          ✓
+        </button>
+        <button
+          type="button"
+          class="btn-entry btn-entry-cancel"
+          (click)="onEntryCancelled()"
+          [attr.aria-label]="'Abandonner la saisie de l\'événement « ' + event().title + ' »'"
+        >
+          ✗
+        </button>
+      </div>
+    </div>
+  } @else {
+    <button
+      type="button"
+      class="event-body"
+      (click)="onBodyTouched()"
+      [attr.aria-label]="'Modifier l\'événement « ' + event().title + ' »'"
+    >
+      @if (timeLabel() !== '') {
+        <span class="event-time">{{ timeLabel() }}</span>
+      }
+      <span class="event-title">{{ event().title }}</span>
+      @if (showDate()) {
+        <span class="event-date">{{ dateLabel() }}</span>
+      }
+    </button>
+
+    <button
+      type="button"
+      class="btn-icon btn-danger btn-remove-event"
+      (click)="onRemoveRequested()"
+      [attr.aria-label]="'Supprimer l\'événement « ' + event().title + ' »'"
+    >
+      <span class="icon icon-trash" aria-hidden="true"></span>
+    </button>
+  }
+
+  <div class="event-note">
+    @if (event().note; as linkedNote) {
+      <button type="button" class="event-note-title" (click)="onNoteOpenRequested(linkedNote)">
+        {{ linkedNote.title }}
+      </button>
+      <button
+        type="button"
+        class="btn-note btn-remove-note"
+        (click)="onNoteRemoved()"
+        [attr.aria-label]="'Retirer la note de l\'événement « ' + event().title + ' »'"
+      >
+        Retirer la note
+      </button>
+    } @else {
+      <button type="button" class="btn-note btn-link-note" (click)="onNoteRequested()">
+        Lier une note
+      </button>
+    }
+  </div>
+</div>

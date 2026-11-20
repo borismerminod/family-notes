@@ -93,7 +93,7 @@ Il n'a aucune écriture. Il **doit être étendu** (lots B et C).
 | D-EV9 | Migration | Deux fichiers `.sql` dans `public/assets/migrations/`, jamais de SQL de schéma en TypeScript : **`schema_events.sql`** crée la table complète (seed + `note_id`) quand `events` manque ; **`migration_events_note.sql`** ajoute `note_id` et son index quand la table existe sans cette colonne. Une étape **`ensureEventsTable`** de `SchemaMigrationService` choisit l'un des deux. Elle vient **après** les tables kanban, parce qu'elle référence `notes`. |
 | D-EV10 | Modèle | `CalendarEvent { id, title, date, start_time, end_time, note: Note \| null }`. `noteIds` disparaît. La note est **entière**, comme `KanbanCard.note` : la popup affiche son titre et ouvre la note par son `id`. `note` vaut `null` dans trois cas que l'écran ne distingue pas : pas de lien, note supprimée, ou note illisible (journalisée, `D-C15`). |
 | D-EV11 | Heures absentes | `''` dans le modèle, `NULL` en base. La lecture convertit `NULL → ''`, comme aujourd'hui, et l'écriture convertit `'' → NULL`. Les deux conversions vivent **dans le service**, nulle part ailleurs. |
-| D-EV12 | Hydratation des notes | La logique « résoudre une fois chaque note distincte référencée » de `KanbanCardService` (`resolveNotesOf`, `readNoteOrNothing`) est **extraite** dans un service partagé **`NoteReferenceResolver`**, que `CalendarService` utilise. Faire migrer `KanbanCardService` vers ce service est un **refactoring séparé**, proposé pour la revue. Ce lot ne touche pas au kanban. |
+| D-EV12 | Hydratation des notes | La logique « résoudre une fois chaque note distincte référencée » de `KanbanCardService` (`resolveNotesOf`, `readNoteOrNothing`) est **reprise dans `CalendarService`**, en méthodes privées (`resolveNotes`, `distinctReferencesOf`, `readNoteOrNothing`), et `CalendarService` injecte directement `NotesService`. *Révisé le 2026-11-20 à la demande de l'utilisateur :* le service partagé `NoteReferenceResolver` d'abord prévu est abandonné. Ce lot ne touche pas au kanban. |
 | D-EV13 | Surface d'écriture du service | **Une seule méthode publique** : `saveEventChanges(changeSet)`. Elle porte les trois opérations demandées : création et modification par un **upsert**, suppression par **identifiant**. Il n'y a pas trois méthodes `add/update/delete` publiques : la SPEC veut que la composition entière passe **ou** échoue (`US9`), ce qu'une seule transaction garantit. Les trois opérations existent comme constructeurs privés d'instructions (`upsertStatementOf`, `deleteStatementOf`). |
 | D-EV14 | Atomicité | **Transaction** via `SQLiteDBConnection.executeSet(set, true)` du plugin (présent dans `@capacitor-community/sqlite` 8.1.1). C'est la première transaction du dépôt, et elle rompt sciemment avec `D-L13` : ici la SPEC exige le « tout ou rien ». Vérifié sur `sql.js` : un `CHECK` qui échoue au 3ᵉ ordre annule l'insert et la suppression qui précédaient. `persist()` est appelé **une fois**, après la transaction. |
 | D-EV15 | Suppressions explicites | Les suppressions sont **dérivées** : ce sont les identifiants **lus à l'ouverture** et absents de la composition. Le kanban, lui, supprime « tout ce qui n'est pas affiché ». Ici, une suppression « par date » serait **dangereuse** : un événement déplacé vers une autre date (`US4`) serait détruit, et une lecture ratée effacerait la journée. Le service ne supprime donc **que** les identifiants qu'on lui nomme. |
@@ -213,13 +213,9 @@ classDiagram
     <<service>>
     +getNoteById(id) Promise~Note~
   }
-  class NoteReferenceResolver {
-    <<service>>
-    +resolveNotes(noteIds) Promise~Map~
-  }
   class CalendarService {
     <<service>>
-    -NoteReferenceResolver noteReferenceResolver
+    -NotesService notesService
     +getEventsFromRangedDate(range) Promise~CalendarEvent[]~
     +getEventsFromDate(date) Promise~CalendarEvent[]~
     +saveEventChanges(changeSet) Promise~void~
@@ -227,6 +223,8 @@ classDiagram
     -upsertStatementOf(event) capSQLiteSet
     -deleteStatementOf(eventIds) capSQLiteSet
     -mapRowToEvent(row, notesById) CalendarEvent
+    -resolveNotes(noteIds) Promise~Map~
+    -readNoteOrNothing(noteId) Promise~Note~
   }
   class SchemaMigrationService {
     <<service>>
@@ -235,8 +233,7 @@ classDiagram
   }
   SqliteService <|-- CalendarService
   SqliteService <|-- NotesService
-  CalendarService --> NoteReferenceResolver
-  NoteReferenceResolver --> NotesService
+  CalendarService --> NotesService
   CalendarService ..> EventChangeSet
   CalendarService ..> CalendarEventComposition : validateEntry (filet)
 
@@ -329,7 +326,7 @@ classDiagram
 | `SchemaMigrationService` | ETENDU — étape `ensureEventsTable` |
 | `Calendar` | ETENDU — héberge la popup, l'ouvre depuis `selectDay`, relit la grille sur `saved` |
 | `EventEntry`, `EventIssue`, `EventComposition`, `EventChangeSet` | A CREER — `core/models/calendar-event-composition.model.ts` |
-| `calendar-event-composition.ts`, `NoteReferenceResolver` | A CREER — `core/services/` |
+| `calendar-event-composition.ts` | A CREER — `core/services/` |
 | `CalendarEventPanels`, `CalendarEventItem` | A CREER — `calendar-event-panels/`, `calendar-event-item/` |
 | `schema_events.sql`, `migration_events_note.sql` | A CREER — `public/assets/migrations/` |
 | `CalendarEventComponent` (`calendar-event/`) | SUPPRIME |
@@ -367,7 +364,7 @@ specs existantes (`calendar.spec.ts`, `calendar-day.spec.ts`, `calendar-events.s
 `calendar-service.spec.ts`) passent de `noteIds: []` à `note: null`. Ce sont des retouches de
 specs : elles relèvent des skills de test, pas de `dev_par_cas`.
 
-**`NoteReferenceResolver.resolveNotes(noteIds)` — extrait de `KanbanCardService`…**
+**`CalendarService.resolveNotes(noteIds)` (privée) — reprise de `KanbanCardService`…**
 - — je dédoublonne les identifiants reçus et j'ignore les `null` ;
 - — pour chaque identifiant distinct, je demande la note à `NotesService.getNoteById` **une seule
   fois** ;
@@ -378,7 +375,7 @@ specs : elles relèvent des skills de test, pas de `dev_par_cas`.
 **Quand le calendrier ou la popup demande des événements (`getEventsFromRangedDate`,
 `getEventsFromDate`)…**
 - — je lis les lignes avec leurs colonnes **nommées**, `note_id` compris (fini le `SELECT *`) ;
-- — je collecte les `note_id` et je les fais résoudre par `NoteReferenceResolver` ;
+- — je collecte les `note_id` et je les fais résoudre par `resolveNotes` ;
 - — je convertis chaque ligne : `start_time`/`end_time` `NULL → ''` (`D-EV11`), et
   `note = notesById.get(note_id) ?? null` ;
 - — une date sans événement rend `[]`, pas une erreur ;
@@ -618,7 +615,7 @@ supprimé.
   aux contraintes.
 - **Specs du lot précédent à retoucher** : quatre fabriques `noteIds: []` → `note: null`, et dans
   `calendar-service.spec.ts` le cas qui affirme `noteIds` égal à `[]` (ligne ~110) devient « `note`
-  vaut `null` sans `note_id` ». `CalendarService` dépendra de `NoteReferenceResolver` : ses specs
+  vaut `null` sans `note_id` ». `CalendarService` dépendra de `NotesService` : ses specs
   devront fournir un double par DI, sinon le vrai `NotesService` ouvre une connexion (mémoire
   `run-frontend-tests`, `TestBed` reconstruits).
 - **Tests de service** : asserter les **données relues ou rendues**, jamais le SQL émis (mémoire
@@ -630,8 +627,7 @@ supprimé.
   la popup avec lui. Aucun état ne fuit.
 - **Retour matériel Android** non intercepté : la composition peut être perdue par ce geste. C'est
   un trou connu, hors périmètre (SPEC).
-- **Refactorings proposés pour la revue, hors de ce lot** : faire passer `KanbanCardService` par
-  `NoteReferenceResolver` (`D-EV12`) ; renommer `start_time` / `end_time` en camelCase ; retirer le
+- **Refactorings proposés pour la revue, hors de ce lot** : renommer `start_time` / `end_time` en camelCase ; retirer le
   `ALTER TABLE notes ADD COLUMN category_id` écrit en TypeScript dans `SchemaMigrationService`
   (contraire à la règle des migrations en `.sql`) ; supprimer `calendar.model.ts`, qui n'est pas
   utilisé.
@@ -645,7 +641,7 @@ Dans l'ordre, chaque lot ne dépendant que des précédents :
 | Ordre | Lot | Cible | US |
 |---|---|---|---|
 | 1 | **A** — migration `note_id` | `schema_events.sql`, `migration_events_note.sql`, `SchemaMigrationService.ensureEventsTable` | US5, US10 |
-| 2 | **B** — modèle + lectures hydratées | `CalendarEvent.note`, `NoteReferenceResolver`, `CalendarService` (lectures) | US2, US5, US10 |
+| 2 | **B** — modèle + lectures hydratées | `CalendarEvent.note`, `CalendarService` (lectures hydratées) | US2, US5, US10 |
 | 3 | **D** — composition pure | `calendar-event-composition.ts` + modèles associés | US3 → US9 |
 | 4 | **C** — écriture atomique | `CalendarService.saveEventChanges` (utilise `validateEntry` de D) | US3, US4, US5, US8, US9 |
 | 5 | **E** — composant événement | `CalendarEventItem` | US2 → US8 |

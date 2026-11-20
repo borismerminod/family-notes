@@ -6,7 +6,7 @@ import { buildMonthGrid } from './calendar-grid';
 
 /** Build a `CalendarEvent` for the test fixtures. */
 function mk(id: string, date = '2026-04-05', start_time = '', end_time = ''): CalendarEvent {
-  return { id, title: `Ev ${id}`, date, start_time, end_time, noteIds: [] };
+  return { id, title: `Ev ${id}`, date, start_time, end_time, note: null };
 }
 
 describe('calendar-events helpers', () => {

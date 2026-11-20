@@ -53,4 +53,10 @@
             }
         }
     </div>
+
+    <app-calendar-event-panels
+        [date]="selectedDate"
+        [(open)]="eventPanelOpen"
+        (saved)="onEventsSaved()"
+    />
 </div>

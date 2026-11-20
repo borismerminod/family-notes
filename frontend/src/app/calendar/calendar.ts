@@ -1,10 +1,11 @@
-import { Component, inject, Input, OnInit, signal } from '@angular/core';
+import { Component, inject, Input, OnInit, signal, WritableSignal } from '@angular/core';
 import { CalendarService } from '../core/services/calendar-service';
 import {CalendarDay} from '../core/models/calendar-day.model'
 import { CalendarEvent } from '../core/models/calendar-event.model';
 import { buildMonthGrid, isValidMonthKey, localDateKey, localMonthKey, monthKeyOfDate } from '../core/services/calendar-grid';
 import { groupEventsByDate, sortEvents } from '../core/services/calendar-events';
 import {CalendarDayComponent} from '../calendar-day/calendar-day'
+import { CalendarEventPanels } from '../calendar-event-panels/calendar-event-panels';
 import { DatePipe } from '@angular/common';
 import { Router, RouterLink, RouterLinkActive, ActivatedRoute } from '@angular/router';
 
@@ -17,7 +18,7 @@ interface GridLoadResult
 
 @Component({
   selector: 'app-calendar',
-  imports: [CalendarDayComponent, DatePipe,RouterLink, RouterLinkActive],
+  imports: [CalendarDayComponent, CalendarEventPanels, DatePipe,RouterLink, RouterLinkActive],
   templateUrl: './calendar.html',
   styleUrl: './calendar.css',
 })
@@ -38,6 +39,8 @@ export class Calendar implements OnInit
   eventsLoading = signal<boolean>(false)
   /** Whether the last fetch of the displayed grid's events failed, to tell it apart from an empty month. */
   eventsError = signal<boolean>(false)
+  /** Visibility of the popup of the selected date's events, opened by touching a cell (US1). */
+  eventPanelOpen : WritableSignal<boolean> = signal<boolean>(false)
   /** Number of the most recent grid load: only its answer may update the screen. */
   private latestGridLoad : number = 0
 
@@ -250,10 +253,11 @@ export class Calendar implements OnInit
   }
 
   /**
-   * Selects the date of a cell; only one date is selected at a time. A date of the displayed month only
-   * changes the selection, kept in the component state: the URL stays put and nothing is fetched again.
-   * A date of an adjacent month also navigates to its month, where it stays selected since the
-   * component is reused when only the route parameter changes.
+   * Selects the date of a cell and opens the popup of its events; only one date is selected at a time.
+   * A date of the displayed month only changes the selection, kept in the component state: the URL
+   * stays put and the grid is not fetched again. A date of an adjacent month also navigates to its
+   * month first; the component is reused when only the route parameter changes, so the date stays
+   * selected and the popup opens on it (US1).
    * @param day The cell the user picked.
    */
   async selectDay(day: CalendarDay) : Promise<void>
@@ -263,6 +267,17 @@ export class Calendar implements OnInit
     {
       await this.navigateToMonthOf(day)
     }
+    this.eventPanelOpen.set(true)
+  }
+
+  /**
+   * Answers a successful save of the popup by reading the grid again, so a moved, added or removed
+   * event shows in its new cell without reloading the page (D-EV25, US9). The numbering of the grid
+   * loads still applies: a save answering after a month change never overwrites the newer grid.
+   */
+  async onEventsSaved() : Promise<void>
+  {
+    await this.refreshDays()
   }
 
   /**

@@ -55,7 +55,7 @@ interface DayStateInputs {
  * @returns The event.
  */
 function makeEvent(id: string, date: string, title: string): CalendarEvent {
-  return { id, title, date, start_time: '', end_time: '', noteIds: [] };
+  return { id, title, date, start_time: '', end_time: '', note: null };
 }
 
 describe('CalendarDay', () => {
