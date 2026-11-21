@@ -13,26 +13,31 @@ export interface NavbarTab {
   commands: string[];
   /** Whether the tab can be used; a disabled tab is rendered as an inert button. */
   enabled: boolean;
+  /**
+   * Whether the tab is active only on its exact URL. `false` also activates it on the URLs below
+   * its destination, as `/calendar/2026-11` for the Calendar tab.
+   */
+  matchExactUrl: boolean;
 }
 
 /**
  * Single source of truth of the bar tabs (D-N3). The array order is the display order.
  */
 export const NAVBAR_TABS: readonly NavbarTab[] = [
-  { id: 'notes', label: 'Notes', commands: ['/notes'], enabled: true },
-  { id: 'kanbans', label: 'Kanbans', commands: ['/kanban'], enabled: true },
-  { id: 'calendar', label: 'Calendrier', commands: [], enabled: false },
+  { id: 'notes', label: 'Notes', commands: ['/notes'], enabled: true, matchExactUrl: true },
+  { id: 'kanbans', label: 'Kanbans', commands: ['/kanban'], enabled: true, matchExactUrl: true },
+  { id: 'calendar', label: 'Calendrier', commands: ['/calendar'], enabled: true, matchExactUrl: false },
 ];
 
 /**
  * Shared bottom navigation bar of the application, hosted by the list screens. It has no input,
  * no output and injects nothing (D-N2): everything it shows comes from the router.
  *
- * **Batch A in progress.** The `nav` landmark, the three tabs (labels and order) and the
- * destinations of the enabled tabs (`routerLink`) exist, and a disabled tab is rendered as a native
- * `disabled` button (D-N8). The enabled tab matching the URL exactly is flagged by
- * `routerLinkActive` with `aria-current="page"` (D-N5); the remaining cases of
- * `PLAN_TESTS_NAVBAR.md` are not implemented yet.
+ * The three tabs lead to their screen through `routerLink`; a tab marked disabled would be rendered
+ * as a native `disabled` button (D-N8). The Calendar tab leads to `/calendar`, whose screen opens on
+ * the current month by itself, so the tab never freezes a month. The enabled tab matching the URL
+ * is flagged by `routerLinkActive` with `aria-current="page"` (D-N5): exactly for Notes and
+ * Kanbans, whose editors must not light them up, and with the month below it for Calendar.
  */
 @Component({
   selector: 'app-navbar',

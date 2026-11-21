@@ -6,7 +6,7 @@
         [routerLink]="tab.commands"
         routerLinkActive="navbar-tab-active"
         ariaCurrentWhenActive="page"
-        [routerLinkActiveOptions]="{ exact: true }"
+        [routerLinkActiveOptions]="{ exact: tab.matchExactUrl }"
         >{{ tab.label }}</a
       >
     } @else {

@@ -54,7 +54,8 @@ import { CalendarService } from '../core/services/calendar-service';
  * | `.day-cell` | Touch target of a cell (inside the host); a click selects the date | T034 to T039, T052 |
  * | `.event-title` | Title of one event, rendered inside the cell of its date | T050 to T059 |
  * | `button[aria-label="Mois précédent"]` · `button[aria-label="Mois suivant"]` | The two arrows | T040 to T044, T051, T058, T059 |
- * | `input[type="month"]` | The period selector, value `YYYY-MM`, committed on `change`, with an `aria-label` | T045 to T048 |
+ * | `input[type="month"]` | The period selector, value `YYYY-MM`, with an `aria-label`; a change alone commits nothing | T045 to T048 |
+ * | `button[aria-label="Valider le mois choisi"]` | Commits the value of the period selector | T045 to T048 |
  * | `button` whose text is `Aujourd'hui` | Back to the month holding today | T049 |
  * | `.events-loading` | Discreet loading state, present only while the events are being fetched | T056 |
  * | `.events-error` | Discreet error state, present only after a failed fetch | T053, T057, T058 |
@@ -341,14 +342,23 @@ describe('Calendar', () => {
   }
 
   /**
-   * Picks a period in the selector, as a user committing a choice.
-   * @param period `YYYY-MM` value to choose.
+   * Picks a period in the selector without validating it, as a user who has not committed yet.
+   * @param period `YYYY-MM` value to pick.
    */
-  async function chooseMonth(period: string): Promise<void> {
+  async function pickMonth(period: string): Promise<void> {
     const input: HTMLInputElement = monthInput();
     input.value = period;
     input.dispatchEvent(new Event('change'));
     await settle();
+  }
+
+  /**
+   * Picks a period in the selector then validates it with its button, as a user committing a choice.
+   * @param period `YYYY-MM` value to choose.
+   */
+  async function chooseMonth(period: string): Promise<void> {
+    await pickMonth(period);
+    await clickButton('Valider le mois choisi');
   }
 
   beforeEach(async () => {
@@ -676,6 +686,32 @@ describe('Calendar', () => {
       expect(navigateByUrlSpy).not.toHaveBeenCalled();
       expect(callsAfterChoice).toBe(callsBeforeChoice);
       expect(url).toBe('/calendar/2026-11');
+    });
+
+    it("T048.1 - choisit une période sans la valider : ni l'URL ni la grille ne changent", async () => {
+      await openCalendarAt('/calendar/2026-11');
+
+      await pickMonth('2027-06');
+      const url: string = router.url;
+      const periodUrl: string = displayedPeriodUrl();
+
+      expect(url).toBe('/calendar/2026-11');
+      expect(periodUrl).toBe('/calendar/2026-11');
+    });
+
+    it("T048.2 - valide la période choisie avec la touche Entrée : le calendrier l'affiche", async () => {
+      await openCalendarAt('/calendar/2026-11');
+      await pickMonth('2027-06');
+      const input: HTMLInputElement = monthInput();
+      const enterKey: KeyboardEvent = new KeyboardEvent('keydown', { key: 'Enter' });
+
+      input.dispatchEvent(enterKey);
+      await settle();
+      const url: string = router.url;
+      const periodUrl: string = displayedPeriodUrl();
+
+      expect(url).toBe('/calendar/2027-06');
+      expect(periodUrl).toBe(url);
     });
 
     it("T049 - utilise le bouton « Aujourd'hui » depuis une période éloignée : revient au mois du jour et met l'URL à jour", async () => {

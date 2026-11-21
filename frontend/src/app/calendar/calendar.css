@@ -2,6 +2,21 @@
    Calendrier — style "Mes Notes"
    ============================================ */
 
+/* Hôte : déclare les cinq couleurs dont hérite la barre de navigation (contrat de navbar.css),
+   aux valeurs des listes pour que la barre soit identique d'un écran à l'autre, et réserve en bas
+   la hauteur de la barre fixe pour qu'elle ne masque pas la dernière ligne de la grille. */
+:host {
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  padding-bottom: calc(var(--navbar-height) + var(--navbar-fab-gap) + var(--safe-bottom));
+}
+
 .calendar {
   max-width: 780px;
   margin: 0 auto;
@@ -12,7 +27,7 @@
   font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
-/* --- En-tête du mois --- */
+/* --- En-tête : le nom du mois et l'année seuls, les commandes de période étant sous la grille --- */
 .month-title {
   text-align: center;
   font-size: 1.3rem;
@@ -23,7 +38,16 @@
   margin-bottom: 22px;
 }
 
-/* --- Flèches mois précédent / suivant, de part et d'autre du mois affiché --- */
+/* --- Commandes de période, sous la grille et au-dessus de la barre de navigation :
+       flèches de part et d'autre de « Aujourd'hui », puis le sélecteur et son bouton Valider --- */
+.period-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
 .month-nav {
   display: flex;
   justify-content: center;
@@ -31,8 +55,12 @@
   gap: 18px;
 }
 
-.month-label {
-  min-width: 9em;
+.month-choice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
 }
 
 /* Mêmes flèches que les '.btn-move' de l'éditeur de kanban : glyphe ← → dans un bouton bordé,
@@ -59,16 +87,7 @@
   outline-offset: 2px;
 }
 
-/* --- Sélecteur direct du mois et de l'année + bouton « Aujourd'hui » --- */
-.period-controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
+/* --- Bouton « Aujourd'hui », entre les deux flèches --- */
 .today-btn {
   padding: 6px 12px;
   border: none;
@@ -104,6 +123,28 @@
 }
 
 .month-picker:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* --- Bouton « Valider » du sélecteur : seule façon, avec Entrée, de changer de mois par le sélecteur --- */
+.month-validate-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 10px;
+  background: #7c3aed;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.month-validate-btn:hover {
+  background: #6d28d9;
+}
+
+.month-validate-btn:focus-visible {
   outline: 2px solid #8b5cf6;
   outline-offset: 2px;
 }

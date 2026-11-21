@@ -6,6 +6,7 @@ import { buildMonthGrid, isValidMonthKey, localDateKey, localMonthKey, monthKeyO
 import { groupEventsByDate, sortEvents } from '../core/services/calendar-events';
 import {CalendarDayComponent} from '../calendar-day/calendar-day'
 import { CalendarEventPanels } from '../calendar-event-panels/calendar-event-panels';
+import { NavBar } from '../core/components/navbar/navbar';
 import { DatePipe } from '@angular/common';
 import { Router, RouterLink, RouterLinkActive, ActivatedRoute } from '@angular/router';
 
@@ -18,7 +19,7 @@ interface GridLoadResult
 
 @Component({
   selector: 'app-calendar',
-  imports: [CalendarDayComponent, CalendarEventPanels, DatePipe,RouterLink, RouterLinkActive],
+  imports: [CalendarDayComponent, CalendarEventPanels, NavBar, DatePipe,RouterLink, RouterLinkActive],
   templateUrl: './calendar.html',
   styleUrl: './calendar.css',
 })
@@ -302,8 +303,9 @@ export class Calendar implements OnInit
 
   /**
    * Goes to the period chosen in the month picker, as an explicit navigation that adds a history entry.
-   * A malformed value, or the period already displayed, triggers nothing: no navigation, no history
-   * entry, no fetch.
+   * Called when the user validates the picker (« Valider » or Enter), never on a mere change of its
+   * value. A malformed value, or the period already displayed, triggers nothing: no navigation, no
+   * history entry, no fetch.
    * @param pickedMonth The `'YYYY-MM'` value committed by the picker.
    */
   async chooseMonth(pickedMonth: string) : Promise<void>
