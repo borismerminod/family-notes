@@ -207,3 +207,90 @@ pour que les changements arrivent dans les dossiers natifs :
 ```powershell
 docker run --rm -v "${PWD}/frontend:/app" -w /app node:lts npx cap sync
 ```
+
+## 7. Publication web (GitHub Pages)
+
+L'application tourne aussi dans un navigateur : `jeep-sqlite` fournit SQLite en WebAssembly
+(`sql.js`), sans backend. GitHub Pages la sert depuis un **sous-dossier**, pas depuis la racine du
+domaine :
+
+```
+https://borismerminod.github.io/family-notes/
+```
+
+Tout ce qui suppose la racine (`/`) casse donc une fois en ligne (cf. 7.4).
+
+### 7.1 Build pour Pages
+
+```bash
+docker run --rm -v "${PWD}/frontend:/app" -w /app node:lts sh -c "npx ng build --base-href /family-notes/ && cp dist/project_tmp/browser/index.html dist/project_tmp/browser/404.html"
+```
+
+- `--base-href /family-notes/` remplace au build le `<base href="/" />` de `src/index.html`, qu'il
+  ne faut **pas** modifier : l'APK et `ng serve` en ont besoin tel quel ;
+- la copie en `404.html` gère les routes profondes : Pages ne connaît que les vrais fichiers, et un
+  rafraîchissement sur `/family-notes/notes/edit/3` renverrait une 404. Pages sert alors
+  `404.html`, c'est-à-dire l'application, et le routeur Angular reprend la main. L'autre solution
+  est `withHashLocation()` dans `app.config.ts` (URL en `/#/notes`) ;
+- le `cp` se fait **dans** le conteneur : `dist` appartient à root sur l'hôte (cf. §4).
+
+### 7.2 Tester le build en local sous le même sous-dossier
+
+Monter le build dans `/srv/family-notes` reproduit le chemin de Pages :
+
+```bash
+docker run --rm -p 8080:8080 -v "${PWD}/frontend/dist/project_tmp/browser:/srv/family-notes" -w /srv node:lts npx http-server -p 8080 -c-1
+```
+
+Puis ouvrir `http://localhost:8080/family-notes/`. Dans la console du navigateur, aucune requête vers
+`/assets/...` sans le préfixe `/family-notes/` ne doit apparaître (wasm, migrations, base de
+départ). Le repli sur `404.html` n'est pas reproduit ici : il est servi à la racine de `/srv`, pas
+dans le sous-dossier. Les routes profondes se vérifient donc en ligne.
+
+### 7.3 Déploiement automatique (GitHub Actions)
+
+Le workflow est en place : [`.github/workflows/pages.yml`](../.github/workflows/pages.yml). Il se
+déclenche à chaque `push` sur `main`, et à la main depuis l'onglet *Actions* (*Run workflow*). Il
+enchaîne :
+
+1. **job `build`** : checkout, Node **22** (cf. « Version de Node » au §4) avec le cache npm, puis
+   dans `frontend/` : `npm ci`, `ng build --base-href "/<nom du dépôt>/"` et la copie `404.html`
+   du 7.1. Le build est ensuite envoyé avec `actions/upload-pages-artifact`. Le base href est tiré
+   du nom du dépôt : renommer le dépôt ne casse rien ;
+2. **job `deploy`** : publication avec `actions/deploy-pages`, dans l'environnement
+   `github-pages`. L'URL du site s'affiche sur le résumé du run.
+
+**Réglage unique, à faire sur GitHub** : *Settings → Pages → Build and deployment → Source :
+**GitHub Actions***. Sans lui, le job `deploy` échoue.
+
+Pas de Docker dans le workflow : la règle « tout passe par Docker » vaut pour la machine de dev, pas
+pour les runners GitHub.
+
+### 7.4 Pièges propres au web
+
+- **`jeep-sqlite` charge le wasm depuis `/assets` en dur**, c'est la valeur par défaut de son
+  attribut `wasmpath`. Sous Pages, `sql-wasm.wasm` serait introuvable et SQLite ne démarrerait
+  pas. **Corrigé** : `DatabaseService.initializeWebStore()` pose `wasmpath="assets"` (relatif, donc
+  résolu par rapport au `<base href>`) sur l'élément `<jeep-sqlite>` avant son ajout au DOM.
+- **`copyFromAssets` lit `/assets/databases/databases.json` en dur**, et ce chemin n'est pas
+  réglable. Au premier lancement, la copie de la base de départ échoue
+  (`CopyFromAssets: no databases.json file in /assets/databases folder`). **Corrigé** dans
+  `DatabaseService.copySeedDatabase()` : sur le web, la base est chargée avec
+  `getFromHTTPRequest('assets/databases/family_notesSQLite.db', false)`.
+  `jeep-sqlite` passe par la même routine de copie que `copyFromAssets`, mais avec l'URL fournie,
+  qui est relative et suit donc le `<base href>`. La base est enregistrée sous le même nom,
+  `family_notesSQLite.db`. Sur Android, on garde `copyFromAssets`, car une URL relative n'y a
+  pas de sens.
+- **Pas d'URL absolue dans les CSS de composant.** `url("/icons/trash.svg")` ignore le
+  `<base href>` : sous Pages, le navigateur cherche `borismerminod.github.io/icons/…`, et l'icône
+  disparaît (le « + » d'ajout, la corbeille…). **Corrigé** : les icônes sont référencées par un
+  chemin relatif au fichier CSS, vers le dossier `public` (`url("../../../public/icons/trash.svg")`
+  depuis `src/app/<composant>/`). Le build copie alors le SVG dans `media/` et réécrit l'URL en
+  `./media/trash-<hash>.svg`, qui suit le `<base href>`. Toute nouvelle icône doit suivre la même
+  règle.
+- **Les migrations, elles, sont déjà relatives** (`assets/migrations`, dans
+  `SchemaMigrationService`) : elles suivent le `<base href>` sans rien changer.
+- **Les données restent dans le navigateur** (IndexedDB) : une base par navigateur et par appareil,
+  sans lien avec celle de l'APK. Vider les données du site efface les notes.
+- **Le site est public**, même avec un dépôt privé (sauf offre Enterprise). Seul le code est exposé,
+  puisque les notes restent sur l'appareil. Un dépôt privé demande une offre payante pour avoir Pages.

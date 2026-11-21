@@ -11,6 +11,7 @@ describe('DatabaseService', () => {
   let sqlite: {
     isDatabase: ReturnType<typeof vi.fn>;
     copyFromAssets: ReturnType<typeof vi.fn>;
+    getFromHTTPRequest: ReturnType<typeof vi.fn>;
     createConnection: ReturnType<typeof vi.fn>;
     initWebStore: ReturnType<typeof vi.fn>;
     saveToStore: ReturnType<typeof vi.fn>;
@@ -28,6 +29,7 @@ describe('DatabaseService', () => {
     sqlite = {
       isDatabase: vi.fn().mockResolvedValue({ result: true }),
       copyFromAssets: vi.fn().mockResolvedValue(undefined),
+      getFromHTTPRequest: vi.fn().mockResolvedValue(undefined),
       createConnection: vi.fn().mockResolvedValue(db),
       initWebStore: vi.fn().mockResolvedValue(undefined),
       saveToStore: vi.fn().mockResolvedValue(undefined),
@@ -53,12 +55,27 @@ describe('DatabaseService', () => {
   // C1 — ouverture de la base
   // -------------------------------------------------------------------------
   describe('connect', () => {
-    it('copie le seed des assets quand la base n’existe pas encore', async () => {
+    it('télécharge le seed par une URL relative sur le web quand la base n’existe pas encore', async () => {
       sqlite.isDatabase.mockResolvedValue({ result: false });
 
       await service.connect();
 
-      expect(sqlite.copyFromAssets).toHaveBeenCalled();
+      expect(sqlite.getFromHTTPRequest).toHaveBeenCalledWith(
+        'assets/databases/family_notesSQLite.db',
+        false,
+      );
+      expect(sqlite.copyFromAssets).not.toHaveBeenCalled();
+      expect(db.open).toHaveBeenCalled();
+    });
+
+    it('copie le seed des assets natifs sur Android quand la base n’existe pas encore', async () => {
+      sqlite.isDatabase.mockResolvedValue({ result: false });
+      Object.assign(service as unknown as Record<string, unknown>, { isWeb: false });
+
+      await service.connect();
+
+      expect(sqlite.copyFromAssets).toHaveBeenCalledWith(false);
+      expect(sqlite.getFromHTTPRequest).not.toHaveBeenCalled();
       expect(db.open).toHaveBeenCalled();
     });
 
@@ -66,6 +83,14 @@ describe('DatabaseService', () => {
       await service.connect();
 
       expect(sqlite.copyFromAssets).not.toHaveBeenCalled();
+      expect(sqlite.getFromHTTPRequest).not.toHaveBeenCalled();
+    });
+
+    it('fait chercher le wasm de sql.js par un chemin relatif sur le web', async () => {
+      await service.connect();
+
+      const jeepElement: Element | null = document.querySelector('jeep-sqlite');
+      expect(jeepElement?.getAttribute('wasmpath')).toBe('assets');
     });
 
     it('met le schéma à jour à l’ouverture', async () => {

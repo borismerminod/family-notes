@@ -215,9 +215,9 @@
   mask: var(--icon) center / contain no-repeat;
 }
 
-.icon-search { --icon: url("/icons/search.svg"); }
-.icon-trash { --icon: url("/icons/trash.svg"); }
-.icon-plus { --icon: url("/icons/plus.svg"); }
+.icon-search { --icon: url("../../../public/icons/search.svg"); }
+.icon-trash { --icon: url("../../../public/icons/trash.svg"); }
+.icon-plus { --icon: url("../../../public/icons/plus.svg"); }
 
 /* ---- État vide ---- */
 .empty {

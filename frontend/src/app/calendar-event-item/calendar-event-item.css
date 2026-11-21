@@ -228,7 +228,7 @@
   mask: var(--icon) center / contain no-repeat;
 }
 
-.icon-trash { --icon: url("/icons/trash.svg"); }
+.icon-trash { --icon: url("../../../public/icons/trash.svg"); }
 
 /* ---- Accessible-only labels of the entry ---- */
 .sr-only {

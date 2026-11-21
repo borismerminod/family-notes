@@ -229,9 +229,9 @@
   mask: var(--icon) center / contain no-repeat;
 }
 
-.icon-plus { --icon: url("/icons/plus.svg"); }
-.icon-alert { --icon: url("/icons/alert.svg"); }
-.icon-kanban { --icon: url("/icons/kanban.svg"); }
+.icon-plus { --icon: url("../../../public/icons/plus.svg"); }
+.icon-alert { --icon: url("../../../public/icons/alert.svg"); }
+.icon-kanban { --icon: url("../../../public/icons/kanban.svg"); }
 
 /* ---- Bouton d'action sur une carte ---- */
 .btn-icon {
@@ -257,4 +257,4 @@
   color: var(--danger);
 }
 
-.icon-trash { --icon: url("/icons/trash.svg"); }
+.icon-trash { --icon: url("../../../public/icons/trash.svg"); }

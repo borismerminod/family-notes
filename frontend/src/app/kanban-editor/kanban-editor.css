@@ -372,8 +372,8 @@
   mask: var(--icon) center / contain no-repeat;
 }
 
-.icon-kanban { --icon: url("/icons/kanban.svg"); }
-.icon-alert { --icon: url("/icons/alert.svg"); }
+.icon-kanban { --icon: url("../../../public/icons/kanban.svg"); }
+.icon-alert { --icon: url("../../../public/icons/alert.svg"); }
 
 /* ---- Draft of a new card, in the slot of the list it targets (D-C29) ---- */
 /* Dashed like the draft of a new list, so that both read as « not there yet », and sized to the

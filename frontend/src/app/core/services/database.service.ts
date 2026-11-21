@@ -28,6 +28,17 @@ export class DatabaseService {
   private readonly DB_NAME = 'family_notes';
   /** True on the web platform, where the store must be bootstrapped and flushed by hand. */
   private readonly isWeb = Capacitor.getPlatform() === 'web';
+  /**
+   * Seed database fetched on the web platform. The URL is relative so that it resolves against the
+   * `<base href>`: on GitHub Pages the application lives under `/family-notes/`, where the
+   * `/assets/databases/` path hard-coded by `copyFromAssets` does not exist.
+   */
+  private readonly WEB_SEED_URL = 'assets/databases/family_notesSQLite.db';
+  /**
+   * Folder of `sql-wasm.wasm`, relative to the `<base href>` for the same reason: `jeep-sqlite`
+   * defaults it to the absolute `/assets`.
+   */
+  private readonly WEB_WASM_PATH = 'assets';
 
   /** Opening of the shared connection, started by the first caller of {@link connect}. */
   private opening: Promise<SQLiteDBConnection> | null = null;
@@ -68,7 +79,7 @@ export class DatabaseService {
 
     const alreadyExists = (await this.sqlite.isDatabase(this.DB_NAME)).result;
     if (!alreadyExists) {
-      await this.sqlite.copyFromAssets(false);
+      await this.copySeedDatabase();
     }
 
     const db = await this.sqlite.createConnection(this.DB_NAME, false, 'no-encryption', 1, false);
@@ -82,6 +93,22 @@ export class DatabaseService {
 
     console.log('Base de données initialisée avec succès');
     return db;
+  }
+
+  /**
+   * Installs the seed database on first run. Android reads it from the native assets with
+   * `copyFromAssets`. The web platform fetches it with `getFromHTTPRequest` and the relative
+   * {@link WEB_SEED_URL}, because `copyFromAssets` reads an absolute `/assets/databases/` path that
+   * breaks as soon as the application is served from a sub-folder; both store it under the same
+   * `family_notesSQLite.db` name.
+   * @returns A promise that resolves once the seed database has been copied.
+   */
+  private async copySeedDatabase(): Promise<void> {
+    if (this.isWeb) {
+      await this.sqlite.getFromHTTPRequest(this.WEB_SEED_URL, false);
+    } else {
+      await this.sqlite.copyFromAssets(false);
+    }
   }
 
   /**
@@ -105,14 +132,15 @@ export class DatabaseService {
 
   /**
    * Bootstraps the `jeep-sqlite` web component and the SQLite web store (web platform only): it
-   * ensures the custom element is defined and attached to the DOM, waits for it to be ready, then
-   * initialises the persistent web store.
+   * ensures the custom element is defined, points it at the relative {@link WEB_WASM_PATH} and
+   * attaches it to the DOM, waits for it to be ready, then initialises the persistent web store.
    * @returns A promise that resolves once the web store is ready to use.
    */
   private async initializeWebStore(): Promise<void> {
     await customElements.whenDefined('jeep-sqlite');
     const jeepEl: any =
       document.querySelector('jeep-sqlite') ?? document.createElement('jeep-sqlite');
+    jeepEl.setAttribute('wasmpath', this.WEB_WASM_PATH);
     if (!jeepEl.isConnected) {
       document.body.appendChild(jeepEl);
     }
