@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { vi } from 'vitest';
 
 import { NotePicker } from './note-picker';
-import { NotesService } from '../../services/notes-service';
+import { NotesService } from '../../services/notes/notes-service';
 import { Category, Note } from '../../models';
 import { TextBlock } from '../../models/document.model';
 

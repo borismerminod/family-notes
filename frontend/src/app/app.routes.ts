@@ -1,9 +1,9 @@
 import { Routes } from '@angular/router';
-import {NoteList} from './note-list/note-list';
-import { NoteEditor } from './note-editor/note-editor';
-import { Calendar } from './calendar/calendar';
-import { KanbanList } from './kanban-list/kanban-list';
-import { KanbanEditor } from './kanban-editor/kanban-editor';
+import {NoteList} from './notes-feature/note-list/note-list';
+import { NoteEditor } from './notes-feature/note-editor/note-editor';
+import { Calendar } from './calendar-feature/calendar/calendar';
+import { KanbanList } from './kanban-feature/kanban-list/kanban-list';
+import { KanbanEditor } from './kanban-feature/kanban-editor/kanban-editor';
 
 export const routes: Routes = [
   {

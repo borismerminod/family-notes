@@ -1,6 +1,6 @@
 import { Component, computed, effect, inject, model, output, signal } from '@angular/core';
 import { Note } from '../../models';
-import { NotesService } from '../../services/notes-service';
+import { NotesService } from '../../services/notes/notes-service';
 
 /**
  * Banner shown when the popup could not read the notes. The failure is **contained** in the popup:

@@ -81,12 +81,12 @@ docker run --rm -v "${PWD}/frontend:/app" -v "${HOME}/.android:/root/.android" -
   installé dans l'image de build, à la même version que
   `android/gradle/wrapper/gradle-wrapper.properties`.
 
-**L'APK est généré dans :** `frontend/android/app/build/outputs/apk/debug/app-debug.apk`
+**L'APK est généré dans :** `frontend/android/app/build/outputs/apk/debug/family-notes-debug.apk`
 
 ### 3.4 Installer sur le téléphone
 
 ```powershell
-adb install -r frontend/android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r frontend/android/app/build/outputs/apk/debug/family-notes-debug.apk
 ```
 
 `-r` réinstalle **en conservant les données** (donc les notes). Si l'installation échoue pour cause
@@ -294,3 +294,32 @@ pour les runners GitHub.
   sans lien avec celle de l'APK. Vider les données du site efface les notes.
 - **Le site est public**, même avec un dépôt privé (sauf offre Enterprise). Seul le code est exposé,
   puisque les notes restent sur l'appareil. Un dépôt privé demande une offre payante pour avoir Pages.
+
+## 8. Icône de l'application
+
+L'icône (feuille de note blanche au coin replié et cœur rouge, sur le bleu `#007AFF` de
+l'application) est dessinée par
+[`scripts/app_icon/generate_app_icon.py`](../scripts/app_icon/generate_app_icon.py). Pour la
+modifier (couleurs, proportions), éditer les constantes en tête du script puis le relancer
+**depuis la racine du dépôt** (Python 3 avec Pillow) :
+
+```bash
+python3 scripts/app_icon/generate_app_icon.py
+```
+
+Il réécrit :
+
+- `frontend/android/app/src/main/res/mipmap-<densité>/ic_launcher.png`,
+  `ic_launcher_round.png` et `ic_launcher_foreground.png` (cinq densités, de `mdpi` à
+  `xxxhdpi`) ;
+- `frontend/android/app/src/main/res/values/ic_launcher_background.xml` : la couleur de fond de
+  l'icône adaptative (Android 8+), que référencent `mipmap-anydpi-v26/ic_launcher*.xml` ;
+- `frontend/public/favicon.ico` : l'icône de la version web, référencée par `src/index.html`.
+
+Il n'y a rien d'autre à brancher : le build Android (§3.3) et le build web (§2, §7) prennent ces
+fichiers tels quels. Les PNG générés **doivent être versionnés**, faute de quoi un clone neuf ne
+peut pas construire l'APK (cf. « Fichiers binaires absents du dépôt » au §4).
+
+Sur Android 12+, l'écran de démarrage affiche automatiquement l'icône de l'application (thème
+`Theme.SplashScreen`, sans `windowSplashScreenAnimatedIcon`). Les `drawable*/splash.png` du
+template Capacitor ne servent que sur les versions antérieures.
