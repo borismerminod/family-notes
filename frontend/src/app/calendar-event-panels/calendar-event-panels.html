@@ -1,0 +1,78 @@
+@if (open()) {
+  <div class="event-panels-backdrop" (click)="onBackdropClick($event)">
+    <div class="event-panels" role="dialog" aria-modal="true" aria-labelledby="event-panels-title">
+      <header class="event-panels-header">
+        <h2 id="event-panels-title" class="event-panels-title">{{ date() | date: 'EEEE d MMMM y' }}</h2>
+        <button type="button" class="btn-close-events" (click)="onClose()">Fermer</button>
+      </header>
+
+      @if (isLoading()) {
+        <div class="event-panels-loading" role="status" aria-label="Chargement des événements">
+          <div class="spinner"></div>
+        </div>
+      } @else if (loadFailed()) {
+        <p class="event-panels-load-error" role="alert">{{ loadFailedMessage }}</p>
+      } @else if (composition(); as currentComposition) {
+        <div class="event-panels-body">
+          @if (currentComposition.events.length === 0) {
+            <p class="event-panels-empty">Aucun événement ce jour.</p>
+          }
+          <ul class="event-panels-list">
+            @for (event of currentComposition.events; track event.id) {
+              <li>
+                <app-calendar-event-item
+                  [event]="event"
+                  [isEditing]="event.id === editingEventId()"
+                  [showDate]="event.date !== currentComposition.date"
+                  [issues]="event.id === editingEventId() ? entryIssues() : []"
+                  (entryOpenRequested)="onEntryOpenRequested(event.id)"
+                  (entryValidated)="onEntryValidated(event.id, $event)"
+                  (entryCancelled)="onEntryCancelled(event.id)"
+                  (noteRequested)="onNoteRequested(event.id)"
+                  (noteRemoved)="onNoteRemoved(event.id)"
+                  (noteOpenRequested)="onNoteOpenRequested($event)"
+                  (removeRequested)="onRemoveRequested(event.id)"
+                />
+              </li>
+            }
+          </ul>
+
+          <button type="button" class="btn-add-event" (click)="onAddEvent()">Ajouter un événement</button>
+        </div>
+
+        <footer class="event-panels-footer">
+          @if (saveFailed()) {
+            <p class="event-panels-save-error" role="alert">{{ saveFailedMessage }}</p>
+          }
+          @if (editingEventId() !== null) {
+            <p class="event-panels-entry-hint">Validez ou abandonnez la saisie en cours</p>
+          }
+          <button
+            type="button"
+            class="btn-save-events"
+            [disabled]="editingEventId() !== null || isSaving()"
+            (click)="onSave()"
+          >
+            Enregistrer
+          </button>
+        </footer>
+      }
+    </div>
+  </div>
+}
+
+<app-note-picker [(open)]="notePickerOpen" (selected)="onNoteSelected($event)" />
+
+<app-confirm-dialog
+  class="confirm-remove-event"
+  [message]="removeMessage()"
+  [(open)]="removeConfirmOpen"
+  (answered)="onRemoveConfirmed($event)"
+/>
+
+<app-confirm-dialog
+  class="confirm-leave"
+  [message]="leaveMessage"
+  [(open)]="leaveConfirmOpen"
+  (answered)="onLeaveConfirmed($event)"
+/>

@@ -14,5 +14,5 @@ Il indique où trouver :
 4. **les règles d'implémentation** — stack Angular 21 / Vitest / Capacitor, SOLID, clean code,
    nommage, lisibilité et placement des commentaires.
 
-Ne reconstruis pas ces informations depuis le code : `.agent/AGENT.md` et les documents qu'il cite
+Ne reconstruis pas ces informations depuis le code : `.agent/AGENTS.md` et les documents qu'il cite
 font foi.

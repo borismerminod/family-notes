@@ -7,7 +7,12 @@ import { KanbanEditor } from './kanban-editor/kanban-editor';
 
 export const routes: Routes = [
   {
-    path: 'calendar/:selectedMonthDate',
+    // Entrée de l'onglet Calendrier : sans mois, Calendar redirige vers le mois courant.
+    path: 'calendar',
+    component: Calendar
+  },
+  {
+    path: 'calendar/:selectedMonth',
     component: Calendar
   },
   {

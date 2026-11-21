@@ -1,13 +1,75 @@
-<p>calendar works!</p>
+<div class="calendar">
+    <div class="month-title">
+        <span class="month-label">{{ selectedMonthDate | date:'MMMM y'}}</span>
+    </div>
 
-<div>
-    <div>{{selectedMonthDate}}</div>
-    @for(day of days(); track day)
-    {
-        <app-calendar-day 
-            [dayDate]="day" 
-        >
-        </app-calendar-day>
-        
+    @if (eventsLoading()) {
+        <p class="events-loading" role="status">Chargement des événements…</p>
     }
+    @if (eventsError()) {
+        <p class="events-error" role="alert">Impossible de charger les événements de cette période.</p>
+    }
+
+    <div class="calendar-grid">
+        <div class="weekday">L</div>
+        <div class="weekday">M</div>
+        <div class="weekday">M</div>
+        <div class="weekday">J</div>
+        <div class="weekday">V</div>
+        <div class="weekday">S</div>
+        <div class="weekday">D</div>
+
+        @for (day of days(); track day?.date) {
+            @if (day !== null) {
+                <app-calendar-day
+                    [dayDate]="day"
+                    [isOtherMonth]="!isCurrentMonth(day)"
+                    [isToday]="isToday(day)"
+                    [isSelected]="isSelected(day)"
+                    (click)="selectDay(day)"
+                >
+                </app-calendar-day>
+            } @else {
+                <div class="empty-cell"></div>
+            }
+        }
+    </div>
+
+    <div class="period-controls">
+        <div class="month-nav">
+            <button type="button" class="nav-btn" (click)="goToPreviousMonth()" aria-label="Mois précédent">
+                ←
+            </button>
+            <button type="button" class="today-btn" (click)="goToToday()">Aujourd'hui</button>
+            <button type="button" class="nav-btn" (click)="goToNextMonth()" aria-label="Mois suivant">
+                →
+            </button>
+        </div>
+        <div class="month-choice">
+            <input
+                #monthPicker
+                type="month"
+                class="month-picker"
+                aria-label="Choisir le mois et l'année"
+                [value]="selectedMonthDate"
+                (keydown.enter)="chooseMonth(monthPicker.value)"
+            />
+            <button
+                type="button"
+                class="month-validate-btn"
+                aria-label="Valider le mois choisi"
+                (click)="chooseMonth(monthPicker.value)"
+            >
+                Valider
+            </button>
+        </div>
+    </div>
+
+    <app-calendar-event-panels
+        [date]="selectedDate"
+        [(open)]="eventPanelOpen"
+        (saved)="onEventsSaved()"
+    />
+
+    <app-navbar />
 </div>

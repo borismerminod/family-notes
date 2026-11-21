@@ -4,8 +4,22 @@
     {
       "name": "family-notes-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["start", "--prefix", "frontend"],
+      "runtimeArgs": [
+        "start",
+        "--prefix",
+        "frontend"
+      ],
       "port": 4200
+    },
+    {
+      "name": "calendar-static-check",
+      "runtimeExecutable": "/home/mateus/.lmstudio/.internal/utils/node",
+      "runtimeArgs": [
+        "/tmp/claude-1000/-home-mateus-family-notes-agent/871e306d-295e-44a8-8a9a-ab1e5df19c8b/scratchpad/static-server.mjs",
+        "/tmp/claude-1000/-home-mateus-family-notes-agent/871e306d-295e-44a8-8a9a-ab1e5df19c8b/scratchpad/dist/browser",
+        "4300"
+      ],
+      "port": 4300
     }
   ]
 }

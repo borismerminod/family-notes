@@ -18,14 +18,18 @@ import { NavBar } from './navbar';
  * component's tab constant (`D6`). Numeric layout values (heights, gaps, `fixed`, `z-index`) are
  * not asserted: jsdom computes no layout, they belong to the device checklist (`D1`).
  *
+ * The Calendar tab, disabled in the plan (group 4), was unlocked once the calendar was delivered:
+ * T1.3, T1.4 and group 4 now assert a tab leading to `/calendar`, and T2.6 a tab active on a month
+ * of the calendar, the calendar screen hosting the bar too.
+ *
  * DOM contract, §7 of the plan:
  *
  * | Selector | Role | Cases |
  * |---|---|---|
  * | `nav[aria-label="Navigation principale"]` | The bar | T1.1 |
  * | `nav .navbar-tab` | One tab, in display order | T1.2, T3.x, T4.x |
- * | `a.navbar-tab` | Navigable tab (`href` is `/notes` or `/kanban`) | T1.3, T3.x |
- * | `button.navbar-tab[disabled]` | The disabled Calendar tab | T1.4, T4.x |
+ * | `a.navbar-tab` | Navigable tab (`href` is `/notes`, `/kanban` or `/calendar`) | T1.3, T3.x, T4.x |
+ * | `button.navbar-tab[disabled]` | A disabled tab; none since the calendar was unlocked | T1.4 |
  * | `[aria-current="page"]` (inside the bar) | The active tab, the **only** marker asserted | T2.x, T3.x |
  */
 
@@ -37,6 +41,7 @@ class EmptyRoute {}
 const TEST_ROUTES: Routes = [
   { path: 'notes', component: EmptyRoute },
   { path: 'kanban', component: EmptyRoute },
+  { path: 'calendar', component: EmptyRoute },
   { path: 'calendar/:selectedMonthDate', component: EmptyRoute },
   { path: 'notes/edit/:id', component: EmptyRoute },
 ];
@@ -138,7 +143,7 @@ describe('NavBar (la barre de navigation partagée)', () => {
       expect(tabLabels).toEqual(['Notes', 'Kanbans', 'Calendrier']);
     });
 
-    it('T1.3 Notes et Kanbans sont des liens vers /notes et /kanban', async () => {
+    it('T1.3 Notes, Kanbans et Calendrier sont des liens vers /notes, /kanban et /calendar', async () => {
       await mountNavBar();
 
       const linkElements: HTMLAnchorElement[] = Array.from(el.querySelectorAll<HTMLAnchorElement>('nav a.navbar-tab'));
@@ -147,24 +152,18 @@ describe('NavBar (la barre de navigation partagée)', () => {
         (link: HTMLAnchorElement): string | null => link.getAttribute('href'),
       );
 
-      expect(linkLabels).toEqual(['Notes', 'Kanbans']);
-      expect(linkDestinations).toEqual(['/notes', '/kanban']);
+      expect(linkLabels).toEqual(['Notes', 'Kanbans', 'Calendrier']);
+      expect(linkDestinations).toEqual(['/notes', '/kanban', '/calendar']);
     });
 
-    it('T1.4 Calendrier est un bouton désactivé, sans href', async () => {
+    it('T1.4 aucun onglet n\'est désactivé', async () => {
       await mountNavBar();
 
       const disabledButtons: HTMLButtonElement[] = Array.from(
         el.querySelectorAll<HTMLButtonElement>('nav button.navbar-tab[disabled]'),
       );
-      const disabledButtonLabels: string[] = disabledButtons.map(
-        (button: HTMLButtonElement): string => (button.textContent ?? '').trim(),
-      );
-      const calendarButton: HTMLButtonElement = disabledButtons[0];
 
-      expect(disabledButtonLabels).toEqual(['Calendrier']);
-      expect(calendarButton.disabled).toBe(true);
-      expect(calendarButton.hasAttribute('href')).toBe(false);
+      expect(disabledButtons).toEqual([]);
     });
   });
 
@@ -221,13 +220,13 @@ describe('NavBar (la barre de navigation partagée)', () => {
       expect(labelsOfActiveTabs).toEqual([]);
     });
 
-    it('T2.6 à /calendar/2026-11, aucun des trois onglets n\'est actif', async () => {
+    it('T2.6 à /calendar/2026-11, seul Calendrier porte aria-current="page"', async () => {
       await mountNavBar();
 
       await navigateTo('/calendar/2026-11');
 
       const labelsOfActiveTabs: string[] = activeTabLabels();
-      expect(labelsOfActiveTabs).toEqual([]);
+      expect(labelsOfActiveTabs).toEqual(['Calendrier']);
     });
   });
 
@@ -272,41 +271,38 @@ describe('NavBar (la barre de navigation partagée)', () => {
   });
 
   // ---------------------------------------------------------------------------
-  // Groupe 4 — Calendrier désactivé
+  // Groupe 4 — Calendrier
   // ---------------------------------------------------------------------------
-  describe('Calendrier désactivé', () => {
-    it('T4.1 toucher Calendrier ne déclenche aucune navigation et laisse l\'URL inchangée', async () => {
+  describe('Calendrier', () => {
+    it('T4.1 toucher Calendrier depuis /notes mène à /calendar et déplace l\'onglet actif', async () => {
       await mountNavBar('/notes');
-      const navigationStarts: NavigationStart[] = trackNavigationStarts();
 
       await tapTab('Calendrier');
 
       const currentUrl: string = router.url;
-      expect(navigationStarts.length).toBe(0);
-      expect(currentUrl).toBe('/notes');
+      const labelsOfActiveTabs: string[] = activeTabLabels();
+      expect(currentUrl).toBe('/calendar');
+      expect(labelsOfActiveTabs).toEqual(['Calendrier']);
     });
 
-    it('T4.2 toucher Calendrier ne change rien dans le DOM : aucun message', async () => {
-      await mountNavBar('/notes');
-      const domBeforeTap: string = el.innerHTML;
+    it('T4.2 toucher Calendrier depuis /kanban mène aussi à /calendar', async () => {
+      await mountNavBar('/kanban');
 
       await tapTab('Calendrier');
 
-      const domAfterTap: string = el.innerHTML;
-      expect(domAfterTap).toBe(domBeforeTap);
+      const currentUrl: string = router.url;
+      expect(currentUrl).toBe('/calendar');
     });
 
-    it('T4.3 Calendrier est désactivé et ne reçoit pas le focus', async () => {
+    it('T4.3 Calendrier est un lien focalisable', async () => {
       await mountNavBar('/notes');
-      const calendarButton: HTMLButtonElement = tabByLabel('Calendrier') as HTMLButtonElement;
-      const activeElementBeforeFocus: Element | null = document.activeElement;
+      const calendarLink: HTMLElement = tabByLabel('Calendrier');
 
-      calendarButton.focus();
+      calendarLink.focus();
 
       const activeElementAfterFocus: Element | null = document.activeElement;
-      expect(calendarButton.disabled).toBe(true);
-      expect(activeElementAfterFocus).toBe(activeElementBeforeFocus);
-      expect(activeElementAfterFocus).not.toBe(calendarButton);
+      expect(calendarLink.tagName).toBe('A');
+      expect(activeElementAfterFocus).toBe(calendarLink);
     });
   });
 });

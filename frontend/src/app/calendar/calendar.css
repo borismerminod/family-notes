@@ -1,0 +1,243 @@
+/* ============================================
+   Calendrier — style "Mes Notes"
+   ============================================ */
+
+/* Hôte : déclare les cinq couleurs dont hérite la barre de navigation (contrat de navbar.css),
+   aux valeurs des listes pour que la barre soit identique d'un écran à l'autre, et réserve en bas
+   la hauteur de la barre fixe pour qu'elle ne masque pas la dernière ligne de la grille. */
+:host {
+  --surface: #ffffff;
+  --text: #1c1c1e;
+  --text-2: #8e8e93;
+  --separator: #e5e5ea;
+  --accent: #007aff;
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  display: block;
+  padding-bottom: calc(var(--navbar-height) + var(--navbar-fab-gap) + var(--safe-bottom));
+}
+
+.calendar {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 22px 28px;
+  background: #ffffff;
+  border-radius: 22px;
+  box-shadow: 0 10px 35px rgba(92, 66, 160, 0.10);
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* --- En-tête : le nom du mois et l'année seuls, les commandes de période étant sous la grille --- */
+.month-title {
+  text-align: center;
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: #1e2230;
+  text-transform: capitalize;
+  letter-spacing: -0.01em;
+  margin-bottom: 22px;
+}
+
+/* --- Commandes de période, sous la grille et au-dessus de la barre de navigation :
+       flèches de part et d'autre de « Aujourd'hui », puis le sélecteur et son bouton Valider --- */
+.period-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.month-nav {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+}
+
+.month-choice {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Mêmes flèches que les '.btn-move' de l'éditeur de kanban : glyphe ← → dans un bouton bordé,
+   aux couleurs du calendrier. */
+.nav-btn {
+  flex: 0 0 auto;
+  width: 48px;
+  height: 48px;
+  border: 1px solid #ddd6fe;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #7c3aed;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.nav-btn:hover {
+  background: #f6f5fb;
+}
+
+.nav-btn:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* --- Bouton « Aujourd'hui », entre les deux flèches --- */
+.today-btn {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 10px;
+  background: #ede9fe;
+  color: #7c3aed;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.today-btn:hover {
+  background: #ddd6fe;
+}
+
+.today-btn:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+.month-picker {
+  padding: 6px 10px;
+  border: 1px solid #ddd6fe;
+  border-radius: 10px;
+  background: #f6f5fb;
+  color: #3b3f4d;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-transform: none;
+}
+
+.month-picker:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* --- Bouton « Valider » du sélecteur : seule façon, avec Entrée, de changer de mois par le sélecteur --- */
+.month-validate-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 10px;
+  background: #7c3aed;
+  color: #ffffff;
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.month-validate-btn:hover {
+  background: #6d28d9;
+}
+
+.month-validate-btn:focus-visible {
+  outline: 2px solid #8b5cf6;
+  outline-offset: 2px;
+}
+
+/* --- État de chargement des événements (discret) --- */
+.events-loading {
+  margin: -10px 0 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #a3a3b5;
+}
+
+/* --- État d'erreur du chargement des événements (discret) --- */
+.events-error {
+  margin: -10px 0 12px;
+  text-align: center;
+  font-size: 0.78rem;
+  color: #b91c1c;
+}
+
+/* --- Grille 7 colonnes --- */
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+/* --- Lettres des jours (L M M J V S D) --- */
+.weekday {
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 1000;
+  color: #a3a3b5;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 10px;
+}
+
+/* --- Cellule d'un jour (le composant hôte) --- */
+app-calendar-day {
+  aspect-ratio: 1 / 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  background: #f6f5fb;
+  color: #3b3f4d;
+  font-size: 0.92rem;
+  font-weight: 500;
+  cursor: pointer;
+  user-select: none;
+  overflow : hidden;
+  transition: background .15s ease, color .15s ease,
+              transform .15s ease, box-shadow .15s ease;
+}
+
+app-calendar-day:hover {
+  background: #ede9fe;
+  color: #7c3aed;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(124, 58, 237, 0.18);
+}
+
+/* Jour courant — classe .today sur l'hôte */
+app-calendar-day.today {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #ffffff;
+  font-weight: 700;
+  box-shadow: 0 6px 16px rgba(124, 58, 237, 0.35);
+}
+
+/* Jour sélectionné — classe .selected */
+app-calendar-day.selected {
+  background: #ffffff;
+  color: #7c3aed;
+  box-shadow: 0 0 0 2px #8b5cf6 inset;
+}
+
+/* --- Jours hors du mois courant — classe .other-month --- */
+app-calendar-day.other-month {
+  background: #fbfbfd;
+  color: #c4c4d0;
+  font-weight: 400;
+}
+
+app-calendar-day.other-month:hover {
+  background: #f3f2f9;
+  color: #a78bda;
+  transform: none;          /* on retire le soulèvement pour les garder discrets */
+  box-shadow: none;
+}
+
+/* --- Cellules vides (remplace le <div>TEST</div>) --- */
+.empty-cell {
+  aspect-ratio: 1 / 1;
+}
